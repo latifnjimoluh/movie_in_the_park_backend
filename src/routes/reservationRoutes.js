@@ -1,9 +1,10 @@
 const express = require("express")
-const { Reservation, Participant, Pack, Payment } = require("../models")
+const { Reservation, Participant, Pack, Payment, sequelize } = require("../models")
 const { verifyToken } = require("../middlewares/auth")
 const { checkPermission } = require("../middlewares/permissions")
 const { validate, createReservationSchema } = require("../middlewares/validation")
 const { addPayment } = require("../services/paymentService")
+const logger = require("../config/logger")
 
 const router = express.Router()
 
@@ -50,46 +51,83 @@ router.get("/", verifyToken, checkPermission("reservations.view"), async (req, r
 })
 
 router.post("/", validate(createReservationSchema), async (req, res) => {
-  const { payeur_name, payeur_phone, payeur_email, pack_id, quantity, participants } = req.validatedData
+  const t = await sequelize.transaction()
+  try {
+    const { payeur_name, payeur_phone, payeur_email, pack_id, quantity, participants } = req.validatedData
 
-  const pack = await Pack.findByPk(pack_id)
+    const pack = await Pack.findByPk(pack_id, { transaction: t })
 
-  if (!pack) {
-    return res.status(404).json({
-      status: 404,
-      message: "Pack not found",
+    if (!pack) {
+      await t.rollback()
+      return res.status(404).json({
+        status: 404,
+        message: "Pack not found",
+      })
+    }
+
+    if (!pack.is_active) {
+      await t.rollback()
+      return res.status(400).json({
+        status: 400,
+        message: "Pack is no longer available",
+      })
+    }
+
+    // Le prix total pour la réservation correspond au prix du pack,
+    // il ne doit pas être multiplié par le nombre de participants
+    const total_price = pack.price
+
+    const reservation = await Reservation.create(
+      {
+        payeur_name,
+        payeur_phone,
+        payeur_email,
+        pack_id,
+        pack_name_snapshot: pack.name,
+        unit_price: pack.price,
+        quantity,
+        total_price,
+        status: "pending",
+      },
+      { transaction: t },
+    )
+
+    if (participants && participants.length > 0) {
+      await Promise.all(
+        participants.map((participant) =>
+          Participant.create(
+            {
+              reservation_id: reservation.id,
+              ...participant,
+            },
+            { transaction: t },
+          ),
+        ),
+      )
+    }
+
+    const fullReservation = await Reservation.findByPk(reservation.id, {
+      include: [{ association: "participants" }],
+      transaction: t,
+    })
+
+    await t.commit()
+
+    logger.info(`Reservation created: ${reservation.id}`)
+
+    res.status(201).json({
+      status: 201,
+      message: "Reservation created",
+      data: { reservation: fullReservation },
+    })
+  } catch (error) {
+    await t.rollback()
+    logger.error(`Error creating reservation: ${error.message}`)
+    res.status(500).json({
+      status: 500,
+      message: "Error creating reservation",
     })
   }
-
-  const total_price = pack.price * quantity
-
-  const reservation = await Reservation.create({
-    payeur_name,
-    payeur_phone,
-    payeur_email,
-    pack_id,
-    pack_name_snapshot: pack.name,
-    unit_price: pack.price,
-    quantity,
-    total_price,
-  })
-
-  for (const participant of participants) {
-    await Participant.create({
-      reservation_id: reservation.id,
-      ...participant,
-    })
-  }
-
-  const fullReservation = await Reservation.findByPk(reservation.id, {
-    include: [{ association: "participants" }],
-  })
-
-  res.status(201).json({
-    status: 201,
-    message: "Reservation created",
-    data: { reservation: fullReservation },
-  })
 })
 
 router.get("/:id", verifyToken, checkPermission("reservations.view"), async (req, res) => {

@@ -27,6 +27,14 @@ const addPaymentSchema = z.object({
   comment: z.string().optional(),
 })
 
+const createUserSchema = z.object({
+  name: z.string().min(2, "Name required"),
+  email: z.string().email("Invalid email"),
+  password: z.string().min(6, "Password must be at least 6 characters"),
+  role: z.enum(["superadmin", "admin", "cashier", "scanner"]),
+  phone: z.string().optional(),
+})
+
 const validate = (schema) => (req, res, next) => {
   try {
     const validated = schema.parse(req.body)
@@ -46,4 +54,5 @@ module.exports = {
   loginSchema,
   createReservationSchema,
   addPaymentSchema,
+  createUserSchema,
 }

@@ -65,7 +65,9 @@ module.exports = {
       })
     }
 
-    const total_price = pack.price * quantity
+    // Le prix total pour la réservation correspond au prix du pack,
+    // il ne doit pas être multiplié par le nombre de participants
+    const total_price = pack.price
     const reservation = await Reservation.create({
       payeur_name,
       payeur_phone,

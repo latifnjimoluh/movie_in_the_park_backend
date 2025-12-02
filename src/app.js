@@ -11,6 +11,7 @@ const reservationRoutes = require("./routes/reservationRoutes")
 const paymentRoutes = require("./routes/paymentRoutes")
 const ticketRoutes = require("./routes/ticketRoutes")
 const scanRoutes = require("./routes/scanRoutes")
+const userRoutes = require("./routes/userRoutes")
 
 // Middleware
 const { errorHandler } = require("./middlewares/errorHandler")
@@ -32,6 +33,7 @@ app.use("/api/reservations", reservationRoutes)
 app.use("/api/payments", paymentRoutes)
 app.use("/api/tickets", ticketRoutes)
 app.use("/api/scan", scanRoutes)
+app.use("/api/users", userRoutes)
 
 // Health check
 app.get("/health", (req, res) => {
