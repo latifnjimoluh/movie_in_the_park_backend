@@ -1,7 +1,11 @@
 const { sequelize } = require("../models")
 const { Reservation, Payment, ActionLog } = require("../models")
 const logger = require("../config/logger")
+const descriptions = require("../utils/actionDescriptions")
 
+// -------------------------------------------------------------
+// 🔵 ADD PAYMENT
+// -------------------------------------------------------------
 const addPayment = async (reservationId, paymentData, userId) => {
   const transaction = await sequelize.transaction()
 
@@ -47,8 +51,14 @@ const addPayment = async (reservationId, paymentData, userId) => {
       newStatus = "paid"
     }
 
-    await reservation.update({ total_paid: newTotalPaid, status: newStatus }, { transaction })
+    await reservation.update(
+      { total_paid: newTotalPaid, status: newStatus },
+      { transaction },
+    )
 
+    // -------------------------------------------------------------
+    // 🟢 ACTION LOG (lisible par un non technicien)
+    // -------------------------------------------------------------
     await ActionLog.create(
       {
         user_id: userId,
@@ -59,6 +69,10 @@ const addPayment = async (reservationId, paymentData, userId) => {
           amount: paymentData.amount,
           method: paymentData.method,
         },
+        description: descriptions["payment.add"]({
+          amount: paymentData.amount,
+          method: paymentData.method,
+        }),
       },
       { transaction },
     )
@@ -81,6 +95,9 @@ const addPayment = async (reservationId, paymentData, userId) => {
   }
 }
 
+// -------------------------------------------------------------
+// 🔴 DELETE PAYMENT
+// -------------------------------------------------------------
 const deletePayment = async (paymentId, reservationId, userId) => {
   const transaction = await sequelize.transaction()
 
@@ -96,6 +113,10 @@ const deletePayment = async (paymentId, reservationId, userId) => {
       transaction,
     })
 
+    if (!reservation) {
+      throw { status: 404, message: "Reservation not found" }
+    }
+
     if (reservation.status === "ticket_generated") {
       throw { status: 409, message: "Cannot delete payment after ticket generation" }
     }
@@ -110,8 +131,15 @@ const deletePayment = async (paymentId, reservationId, userId) => {
     }
 
     await payment.destroy({ transaction })
-    await reservation.update({ total_paid: newTotalPaid, status: newStatus }, { transaction })
 
+    await reservation.update(
+      { total_paid: newTotalPaid, status: newStatus },
+      { transaction },
+    )
+
+    // -------------------------------------------------------------
+    // 🟡 ACTION LOG (lisible par un non technicien)
+    // -------------------------------------------------------------
     await ActionLog.create(
       {
         user_id: userId,
@@ -121,6 +149,9 @@ const deletePayment = async (paymentId, reservationId, userId) => {
           payment_id: paymentId,
           amount: payment.amount,
         },
+        description: descriptions["payment.delete"]({
+          amount: payment.amount,
+        }),
       },
       { transaction },
     )

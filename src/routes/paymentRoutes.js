@@ -7,6 +7,7 @@ const logger = require("../config/logger")
 
 const router = express.Router()
 
+
 // ---------------- GET ALL PAYMENTS ----------------
 router.get("/", verifyToken, checkPermission("payments.view"), async (req, res) => {
   const { q, page = 1, pageSize = 20 } = req.query
