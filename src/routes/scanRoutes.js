@@ -1,16 +1,20 @@
 const express = require("express")
-const { Ticket, Participant, ActionLog } = require("../models")
+const { Ticket, Participant, ActionLog, Reservation } = require("../models")
 const { verifyToken } = require("../middlewares/auth")
 const { checkPermission } = require("../middlewares/permissions")
 const { verifySignature } = require("../utils/hmac")
 
 const router = express.Router()
 
+/* ===========================================
+    🔍 1 — DECODE LE QR CODE (HMAC)
+=========================================== */
 router.post("/decode", async (req, res) => {
   const { qr_payload } = req.body
 
   try {
     const payload = JSON.parse(qr_payload)
+
     const ticket = await Ticket.findOne({
       where: { ticket_number: payload.ticket_number },
       include: [
@@ -28,20 +32,21 @@ router.post("/decode", async (req, res) => {
       })
     }
 
-    if (
-      !verifySignature(
-        `${payload.ticket_number}|${payload.reservation_id}|${payload.timestamp}`,
-        payload.signature,
-        process.env.QR_SECRET,
-      )
-    ) {
+    // Vérification signature HMAC
+    const isValid = verifySignature(
+      `${payload.ticket_number}|${payload.reservation_id}|${payload.timestamp}`,
+      payload.signature,
+      process.env.QR_SECRET
+    )
+
+    if (!isValid) {
       return res.status(401).json({
         status: 401,
         message: "Invalid QR signature",
       })
     }
 
-    res.json({
+    return res.json({
       status: 200,
       message: "QR decoded",
       data: {
@@ -50,63 +55,104 @@ router.post("/decode", async (req, res) => {
       },
     })
   } catch (err) {
-    res.status(400).json({
+    return res.status(400).json({
       status: 400,
       message: "Invalid QR payload",
     })
   }
 })
 
-router.post("/validate", verifyToken, checkPermission("scan.validate"), async (req, res) => {
-  const { ticket_number, participant_ids } = req.body
+/* ===========================================
+    🎫 2 — VALIDATION D’UN PARTICIPANT
+=========================================== */
+router.post(
+  "/validate",
+  verifyToken,
+  checkPermission("scan.validate"),
+  async (req, res) => {
+    const { ticket_number, participant_id } = req.body
 
-  try {
-    const ticket = await Ticket.findOne({
-      where: { ticket_number },
-      include: [{ association: "reservation" }],
-    })
+    try {
+      const ticket = await Ticket.findOne({
+        where: { ticket_number },
+        include: [{ model: Reservation, as: "reservation" }],
+      })
 
-    if (!ticket) {
-      return res.status(404).json({
-        status: 404,
-        message: "Ticket not found",
+      if (!ticket) {
+        return res.status(404).json({
+          status: 404,
+          message: "Ticket not found",
+        })
+      }
+
+      if (ticket.status !== "valid") {
+        return res.status(409).json({
+          status: 409,
+          message: "Ticket already used or cancelled",
+        })
+      }
+
+      // Vérifier si le participant appartient à la réservation
+      const participant = await Participant.findOne({
+        where: { id: participant_id, reservation_id: ticket.reservation_id },
+      })
+
+      if (!participant) {
+        return res.status(400).json({
+          status: 400,
+          message: "Participant not found for this ticket",
+        })
+      }
+
+      // Valider le participant
+      await participant.update({
+        entrance_validated: true,
+        ticket_id: ticket.id,
+      })
+
+      // Tester si tous les participants sont validés
+      const total = await Participant.count({
+        where: { reservation_id: ticket.reservation_id },
+      })
+
+      const validated = await Participant.count({
+        where: {
+          reservation_id: ticket.reservation_id,
+          entrance_validated: true,
+        },
+      })
+
+      if (total === validated) {
+        await ticket.update({ status: "used" })
+      }
+
+      // Log action
+      await ActionLog.create({
+        user_id: req.user.id,
+        reservation_id: ticket.reservation_id,
+        action_type: "entry.validate",
+        meta: {
+          ticket_number,
+          participant_id,
+        },
+      })
+
+      return res.json({
+        status: 200,
+        message: "Participant validated",
+        data: {
+          ticket_status: total === validated ? "used" : "valid",
+          participant,
+        },
+      })
+    } catch (err) {
+      console.error("VALIDATE ERROR:", err)
+      return res.status(500).json({
+        status: 500,
+        message: "Validation error",
       })
     }
-
-    if (ticket.status !== "valid") {
-      return res.status(409).json({
-        status: 409,
-        message: "Ticket already used or cancelled",
-      })
-    }
-
-    for (const participantId of participant_ids) {
-      await Participant.update({ entrance_validated: true }, { where: { id: participantId } })
-    }
-
-    await ticket.update({ status: "used" })
-
-    await ActionLog.create({
-      user_id: req.user.id,
-      reservation_id: ticket.reservation_id,
-      action_type: "entry.validate",
-      meta: {
-        ticket_number,
-        participant_ids,
-      },
-    })
-
-    res.json({
-      status: 200,
-      message: "Entry validated",
-      data: { ticket },
-    })
-  } catch (err) {
-    res.status(500).json({
-      status: 500,
-      message: "Validation error",
-    })
   }
-})
+)
 
 module.exports = router

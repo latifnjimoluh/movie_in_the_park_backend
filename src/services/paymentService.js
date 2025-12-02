@@ -1,15 +1,34 @@
 const { sequelize } = require("../models")
 const { Reservation, Payment, ActionLog } = require("../models")
 const logger = require("../config/logger")
-const descriptions = require("../utils/actionDescriptions")
+const path = require("path")
+const fs = require("fs").promises
 
 // -------------------------------------------------------------
 // 🔵 ADD PAYMENT
 // -------------------------------------------------------------
-const addPayment = async (reservationId, paymentData, userId) => {
+const addPayment = async (reservationId, paymentData, userId, proofFile = null) => {
   const transaction = await sequelize.transaction()
 
   try {
+    // ✅ Log pour vérifier les données reçues
+    logger.info("addPayment called with:", {
+      reservationId,
+      paymentData,
+      userId,
+      hasProofFile: !!proofFile,
+      proofFileName: proofFile?.originalname,
+    })
+
+    // ✅ Validation des données requises
+    if (!paymentData.amount) {
+      throw { status: 400, message: "Amount is required" }
+    }
+
+    if (!paymentData.method) {
+      throw { status: 400, message: "Method is required" }
+    }
+
     const reservation = await Reservation.findByPk(reservationId, {
       lock: true,
       transaction,
@@ -24,11 +43,35 @@ const addPayment = async (reservationId, paymentData, userId) => {
     }
 
     const remainingAmount = reservation.total_price - reservation.total_paid
+    
+    // ✅ Vérification si le montant dépasse le montant restant
     if (paymentData.amount > remainingAmount) {
       throw {
         status: 409,
-        message: `Payment amount exceeds remaining balance (${remainingAmount} XAF)`,
+        message: `Le montant saisi (${paymentData.amount} XAF) dépasse le montant restant (${remainingAmount} XAF)`,
       }
+    }
+
+    // ✅ Gestion de l'upload de la preuve de paiement
+    let proofPath = null
+    if (proofFile) {
+      const uploadsDir = path.join(__dirname, "..", "uploads", "payment-proofs")
+      
+      // Créer le dossier s'il n'existe pas
+      try {
+        await fs.access(uploadsDir)
+      } catch {
+        await fs.mkdir(uploadsDir, { recursive: true })
+      }
+
+      const fileExtension = path.extname(proofFile.originalname)
+      const filename = `proof-${reservationId}-${Date.now()}${fileExtension}`
+      const fullPath = path.join(uploadsDir, filename)
+
+      await fs.writeFile(fullPath, proofFile.buffer)
+      proofPath = `/uploads/payment-proofs/${filename}`
+      
+      logger.info("Proof file saved:", { fullPath, proofPath })
     }
 
     const payment = await Payment.create(
@@ -36,7 +79,8 @@ const addPayment = async (reservationId, paymentData, userId) => {
         reservation_id: reservationId,
         amount: paymentData.amount,
         method: paymentData.method,
-        comment: paymentData.comment,
+        comment: paymentData.comment || null,
+        proof_url: proofPath,
         created_by: userId,
       },
       { transaction },
@@ -56,6 +100,13 @@ const addPayment = async (reservationId, paymentData, userId) => {
       { transaction },
     )
 
+    // ✅ Mapping des méthodes de paiement en français
+    const methodLabels = {
+      cash: "espèces",
+      momo: "Mobile Money",
+      orange: "Orange Money",
+    }
+
     // -------------------------------------------------------------
     // 🟢 ACTION LOG (lisible par un non technicien)
     // -------------------------------------------------------------
@@ -69,10 +120,7 @@ const addPayment = async (reservationId, paymentData, userId) => {
           amount: paymentData.amount,
           method: paymentData.method,
         },
-        description: descriptions["payment.add"]({
-          amount: paymentData.amount,
-          method: paymentData.method,
-        }),
+        description: `Un paiement de ${paymentData.amount} XAF a été enregistré (${methodLabels[paymentData.method] || paymentData.method})`,
       },
       { transaction },
     )
@@ -121,6 +169,17 @@ const deletePayment = async (paymentId, reservationId, userId) => {
       throw { status: 409, message: "Cannot delete payment after ticket generation" }
     }
 
+    // ✅ Supprimer le fichier de preuve s'il existe
+    if (payment.proof_url) {
+      const filePath = path.join(__dirname, "..", payment.proof_url)
+      try {
+        await fs.unlink(filePath)
+        logger.info("Proof file deleted:", filePath)
+      } catch (err) {
+        logger.warn("Could not delete proof file:", err)
+      }
+    }
+
     const newTotalPaid = reservation.total_paid - payment.amount
     let newStatus = "pending"
 
@@ -149,9 +208,7 @@ const deletePayment = async (paymentId, reservationId, userId) => {
           payment_id: paymentId,
           amount: payment.amount,
         },
-        description: descriptions["payment.delete"]({
-          amount: payment.amount,
-        }),
+        description: `Un paiement de ${payment.amount} XAF a été annulé`,
       },
       { transaction },
     )

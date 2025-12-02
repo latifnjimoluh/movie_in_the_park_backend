@@ -18,17 +18,20 @@ module.exports = (sequelize) => {
       amount: {
         type: DataTypes.INTEGER,
         allowNull: false,
-        comment: "Amount in XAF cents",
+        comment: "Amount in XAF",
       },
       method: {
-        type: DataTypes.ENUM("momo", "cash", "card", "other"),
+        type: DataTypes.ENUM("momo", "cash", "orange", "card", "other"),
         allowNull: false,
       },
       proof_url: {
         type: DataTypes.STRING,
+        allowNull: true,
+        comment: "URL or path to payment proof file",
       },
       comment: {
         type: DataTypes.TEXT,
+        allowNull: true,
       },
       created_by: {
         type: DataTypes.UUID,

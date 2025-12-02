@@ -17,7 +17,7 @@ module.exports = {
       })
     }
 
-    const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, process.env.JWT_SECRET, {
+    const token = jwt.sign({ id: user.id, name: user.name, email: user.email, role: user.role }, process.env.JWT_SECRET, {
       expiresIn: process.env.JWT_EXPIRY || "7d",
     })
 
@@ -43,3 +43,4 @@ module.exports = {
     })
   },
 }
+

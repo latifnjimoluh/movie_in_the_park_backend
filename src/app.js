@@ -34,6 +34,8 @@ app.use("/api/payments", paymentRoutes)
 app.use("/api/tickets", ticketRoutes)
 app.use("/api/scan", scanRoutes)
 app.use("/api/users", userRoutes)
+app.use("/uploads", express.static("uploads"))
+
 
 // Health check
 app.get("/health", (req, res) => {
