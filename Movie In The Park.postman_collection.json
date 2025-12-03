@@ -44,7 +44,7 @@
 						"header": [],
 						"body": {
 							"mode": "raw",
-							"raw": "{\r\n  \"email\": \"admin@test.com\",\r\n  \"password\": \"Nexus2023.\"\r\n}\r\n",
+							"raw": "{\r\n  \"email\": \"nexus@gmail.com\",\r\n  \"password\": \"admin123\"\r\n}\r\n",
 							"options": {
 								"raw": {
 									"language": "json"
@@ -60,6 +60,64 @@
 								"api",
 								"auth",
 								"login"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Refresh",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjAyYWUxOTNiLTBmNjMtNDJkZi1iMDM5LWQ5ODQ5OThmMGQyYSIsImVtYWlsIjoiYWRtaW5AdGVzdC5jb20iLCJyb2xlIjoiYWRtaW4iLCJpYXQiOjE3NjQ2MDIxODMsImV4cCI6MTc2NTIwNjk4M30.6gsoThHplwNWgmTiI-y80SvtOZR8W3tmGdr2k2qVKcI",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/auth/refresh",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"auth",
+								"refresh"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Logout",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjAyYWUxOTNiLTBmNjMtNDJkZi1iMDM5LWQ5ODQ5OThmMGQyYSIsImVtYWlsIjoiYWRtaW5AdGVzdC5jb20iLCJyb2xlIjoiYWRtaW4iLCJpYXQiOjE3NjQ2MDIxODMsImV4cCI6MTc2NTIwNjk4M30.6gsoThHplwNWgmTiI-y80SvtOZR8W3tmGdr2k2qVKcI",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/auth/logout",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"auth",
+								"logout"
 							]
 						}
 					},
@@ -97,12 +155,348 @@
 						}
 					},
 					"response": []
+				},
+				{
+					"name": "Get One Reservation",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjAyYWUxOTNiLTBmNjMtNDJkZi1iMDM5LWQ5ODQ5OThmMGQyYSIsImVtYWlsIjoiYWRtaW5AdGVzdC5jb20iLCJyb2xlIjoiYWRtaW4iLCJpYXQiOjE3NjQ2MDI2MzIsImV4cCI6MTc2NTIwNzQzMn0.AS_m8n2FfamYNUsvUmOH6anlqXA49qQ4S5SQ29bb5vQ",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/reservations/1770d4b2-3a94-4d03-a477-60d3b89db198",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"reservations",
+								"1770d4b2-3a94-4d03-a477-60d3b89db198"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Create Reservation",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjAyYWUxOTNiLTBmNjMtNDJkZi1iMDM5LWQ5ODQ5OThmMGQyYSIsImVtYWlsIjoiYWRtaW5AdGVzdC5jb20iLCJyb2xlIjoiYWRtaW4iLCJpYXQiOjE3NjQ2MDI2MzIsImV4cCI6MTc2NTIwNzQzMn0.AS_m8n2FfamYNUsvUmOH6anlqXA49qQ4S5SQ29bb5vQ",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\r\n  \"payeur_name\": \"Nexus\",\r\n  \"payeur_phone\": \"672475691\",\r\n  \"payeur_email\": \"latifnjimoluh@gmail.com\",\r\n  \"pack_id\": \"b8c4fe5e-16f1-47a7-86bc-423dcb7a3d7b\",\r\n  \"quantity\": 2,\r\n  \"participants\": [\r\n    { \"name\": \"Participant A\", \"email\": \"a@test.com\" },\r\n    { \"name\": \"Participant B\", \"email\": \"b@test.com\" }\r\n  ]\r\n}\r\n",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/reservations",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"reservations"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Modifier Reseration",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjAyYWUxOTNiLTBmNjMtNDJkZi1iMDM5LWQ5ODQ5OThmMGQyYSIsImVtYWlsIjoiYWRtaW5AdGVzdC5jb20iLCJyb2xlIjoiYWRtaW4iLCJpYXQiOjE3NjQ2MDI2MzIsImV4cCI6MTc2NTIwNzQzMn0.AS_m8n2FfamYNUsvUmOH6anlqXA49qQ4S5SQ29bb5vQ",
+									"type": "string"
+								}
+							]
+						},
+						"method": "PUT",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\r\n  \"payeur_name\": \"Nexus1\",\r\n  \"payeur_phone\": \"672475691\",\r\n  \"payeur_email\": \"nexuslatif35@gmail.com\"\r\n}\r\n",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/reservations/1770d4b2-3a94-4d03-a477-60d3b89db198",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"reservations",
+								"1770d4b2-3a94-4d03-a477-60d3b89db198"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Annuler Reseration",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjAyYWUxOTNiLTBmNjMtNDJkZi1iMDM5LWQ5ODQ5OThmMGQyYSIsImVtYWlsIjoiYWRtaW5AdGVzdC5jb20iLCJyb2xlIjoiYWRtaW4iLCJpYXQiOjE3NjQ2MDI2MzIsImV4cCI6MTc2NTIwNzQzMn0.AS_m8n2FfamYNUsvUmOH6anlqXA49qQ4S5SQ29bb5vQ",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\r\n  \"payeur_name\": \"Nexus1\",\r\n  \"payeur_phone\": \"672475691\",\r\n  \"payeur_email\": \"nexuslatif35@gmail.com\"\r\n}\r\n",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/reservations/1770d4b2-3a94-4d03-a477-60d3b89db198/cancel",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"reservations",
+								"1770d4b2-3a94-4d03-a477-60d3b89db198",
+								"cancel"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Packs",
+			"item": [
+				{
+					"name": "Get All Packs",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjAyYWUxOTNiLTBmNjMtNDJkZi1iMDM5LWQ5ODQ5OThmMGQyYSIsImVtYWlsIjoiYWRtaW5AdGVzdC5jb20iLCJyb2xlIjoiYWRtaW4iLCJpYXQiOjE3NjQ2MDI2MzIsImV4cCI6MTc2NTIwNzQzMn0.AS_m8n2FfamYNUsvUmOH6anlqXA49qQ4S5SQ29bb5vQ",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/packs",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"packs"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Create Packs",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjAyYWUxOTNiLTBmNjMtNDJkZi1iMDM5LWQ5ODQ5OThmMGQyYSIsImVtYWlsIjoiYWRtaW5AdGVzdC5jb20iLCJyb2xlIjoiYWRtaW4iLCJpYXQiOjE3NjQ2MDI2MzIsImV4cCI6MTc2NTIwNzQzMn0.AS_m8n2FfamYNUsvUmOH6anlqXA49qQ4S5SQ29bb5vQ",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\r\n  \"name\": \"VIP\",\r\n  \"price\": 15000,\r\n  \"description\": \"Pack VIP accès premium\",\r\n  \"capacity\": 5\r\n}\r\n",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/packs",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"packs"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Add Payments",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjAyYWUxOTNiLTBmNjMtNDJkZi1iMDM5LWQ5ODQ5OThmMGQyYSIsImVtYWlsIjoiYWRtaW5AdGVzdC5jb20iLCJyb2xlIjoiYWRtaW4iLCJpYXQiOjE3NjQ2MDI2MzIsImV4cCI6MTc2NTIwNzQzMn0.AS_m8n2FfamYNUsvUmOH6anlqXA49qQ4S5SQ29bb5vQ",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\r\n  \"amount\": 5000,\r\n  \"method\": \"cash\",\r\n  \"comment\": \"Acompte\"\r\n}\r\n",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/reservations//:id/payments",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"reservations",
+								"",
+								":id",
+								"payments"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": ""
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Modifier Pack",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjAyYWUxOTNiLTBmNjMtNDJkZi1iMDM5LWQ5ODQ5OThmMGQyYSIsImVtYWlsIjoiYWRtaW5AdGVzdC5jb20iLCJyb2xlIjoiYWRtaW4iLCJpYXQiOjE3NjQ2MDI2MzIsImV4cCI6MTc2NTIwNzQzMn0.AS_m8n2FfamYNUsvUmOH6anlqXA49qQ4S5SQ29bb5vQ",
+									"type": "string"
+								}
+							]
+						},
+						"method": "PUT",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\r\n  \"name\": \"Simple\",\r\n  \"price\": 18000,\r\n  \"description\": \"Mise à jour du pack\",\r\n  \"capacity\": 6,\r\n  \"is_active\": false\r\n}\r\n",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/packs/e4631039-2cc8-4d34-a0a4-a6d2923a4be9",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"packs",
+								"e4631039-2cc8-4d34-a0a4-a6d2923a4be9"
+							]
+						}
+					},
+					"response": []
 				}
 			]
 		},
 		{
 			"name": "payments",
 			"item": [
+				{
+					"name": "Add Payments",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjAyYWUxOTNiLTBmNjMtNDJkZi1iMDM5LWQ5ODQ5OThmMGQyYSIsImVtYWlsIjoiYWRtaW5AdGVzdC5jb20iLCJyb2xlIjoiYWRtaW4iLCJpYXQiOjE3NjQ2MDI2MzIsImV4cCI6MTc2NTIwNzQzMn0.AS_m8n2FfamYNUsvUmOH6anlqXA49qQ4S5SQ29bb5vQ",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\r\n  \"amount\": 5000,\r\n  \"method\": \"cash\",\r\n  \"comment\": \"Acompte\"\r\n}\r\n",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/reservations/1770d4b2-3a94-4d03-a477-60d3b89db198/payments",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"reservations",
+								"1770d4b2-3a94-4d03-a477-60d3b89db198",
+								"payments"
+							]
+						}
+					},
+					"response": []
+				},
 				{
 					"name": "Get Payment",
 					"request": {
@@ -126,6 +520,334 @@
 							"path": [
 								"api",
 								"payments"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Payment",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjAyYWUxOTNiLTBmNjMtNDJkZi1iMDM5LWQ5ODQ5OThmMGQyYSIsImVtYWlsIjoiYWRtaW5AdGVzdC5jb20iLCJyb2xlIjoic3VwZXJhZG1pbiIsImlhdCI6MTc2NDYwMzkyNywiZXhwIjoxNzY1MjA4NzI3fQ.NEmzXAKqtIgAPTv5CeGMl_Qdp4E5D4Iq7zXnaX40sdY",
+									"type": "string"
+								}
+							]
+						},
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/payments/1770d4b2-3a94-4d03-a477-60d3b89db198/ed72498a-7575-456d-9c1d-b7e795784744",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"payments",
+								"1770d4b2-3a94-4d03-a477-60d3b89db198",
+								"ed72498a-7575-456d-9c1d-b7e795784744"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Scans",
+			"item": [
+				{
+					"name": "Decoder QR",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjAyYWUxOTNiLTBmNjMtNDJkZi1iMDM5LWQ5ODQ5OThmMGQyYSIsImVtYWlsIjoiYWRtaW5AdGVzdC5jb20iLCJyb2xlIjoiYWRtaW4iLCJpYXQiOjE3NjQ2MDI2MzIsImV4cCI6MTc2NTIwNzQzMn0.AS_m8n2FfamYNUsvUmOH6anlqXA49qQ4S5SQ29bb5vQ",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\r\n  \"qr_payload\": \"{\\\"ticket_number\\\":\\\"MIP-MIOGK08P-COVWOW\\\",\\\"reservation_id\\\":\\\"ff4081fb-46fd-4333-a42d-9f90c9db2233\\\",\\\"timestamp\\\":1764672687,\\\"signature\\\":\\\"f8a85a9c391d2de968f3a51927308367227d5bbbfb64062fb7e24135aa9e388a\\\"}\"\r\n}\r\n",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/scan/decode",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"scan",
+								"decode"
+							]
+						}
+					},
+					"response": [{
+						"status": 200,
+						"message": "QR decoded",
+						"data": {
+							"ticket": {
+								"id": "5c5c467c-407b-432c-bb53-8d1b10f68dd2",
+								"reservation_id": "ff4081fb-46fd-4333-a42d-9f90c9db2233",
+								"ticket_number": "MIP-MIOGK08P-COVWOW",
+								"qr_payload": "{\"ticket_number\":\"MIP-MIOGK08P-COVWOW\",\"reservation_id\":\"ff4081fb-46fd-4333-a42d-9f90c9db2233\",\"timestamp\":1764672687,\"signature\":\"f8a85a9c391d2de968f3a51927308367227d5bbbfb64062fb7e24135aa9e388a\"}",
+								"qr_image_url": "/uploads/qr/MIP-MIOGK08P-COVWOW.png",
+								"pdf_url": "/uploads/tickets/MIP-MIOGK08P-COVWOW.pdf",
+								"status": "valid",
+								"generated_by": "02ae193b-0f63-42df-b039-d984998f0d2a",
+								"generated_at": "2025-12-02T10:51:27.751Z",
+								"createdAt": "2025-12-02T10:51:27.751Z",
+								"updatedAt": "2025-12-02T10:51:27.751Z",
+								"reservation": {
+									"remaining_amount": 0,
+									"id": "ff4081fb-46fd-4333-a42d-9f90c9db2233",
+									"payeur_name": "jojo",
+									"payeur_phone": "680254896",
+									"payeur_email": "jojo@gmail.com",
+									"pack_id": "ab93b402-66b5-4f18-a9c3-da877e326a3f",
+									"pack_name_snapshot": "Famille",
+									"unit_price": 10000,
+									"quantity": 3,
+									"total_price": 10000,
+									"total_paid": 10000,
+									"status": "ticket_generated",
+									"createdAt": "2025-12-02T10:49:41.979Z",
+									"updatedAt": "2025-12-02T10:51:27.754Z",
+									"participants": [
+										{
+											"id": "c32cee58-12cc-47e0-8461-ba6bcedb7f6e",
+											"reservation_id": "ff4081fb-46fd-4333-a42d-9f90c9db2233",
+											"name": "sarah",
+											"phone": "623584561",
+											"email": null,
+											"ticket_id": null,
+											"entrance_validated": false,
+											"createdAt": "2025-12-02T10:49:41.985Z",
+											"updatedAt": "2025-12-02T10:49:41.985Z"
+										},
+										{
+											"id": "8eb22fb3-f40b-4da1-855f-bb3d1e38e02a",
+											"reservation_id": "ff4081fb-46fd-4333-a42d-9f90c9db2233",
+											"name": "pierre pharel",
+											"phone": "654789521",
+											"email": null,
+											"ticket_id": null,
+											"entrance_validated": false,
+											"createdAt": "2025-12-02T10:49:41.985Z",
+											"updatedAt": "2025-12-02T10:49:41.985Z"
+										},
+										{
+											"id": "8be046d2-e303-475a-bb99-856c33eca1dd",
+											"reservation_id": "ff4081fb-46fd-4333-a42d-9f90c9db2233",
+											"name": "jojo",
+											"phone": "680254896",
+											"email": "jojo@gmail.com",
+											"ticket_id": "5c5c467c-407b-432c-bb53-8d1b10f68dd2",
+											"entrance_validated": true,
+											"createdAt": "2025-12-02T10:49:41.985Z",
+											"updatedAt": "2025-12-02T15:40:59.166Z"
+										}
+									]
+								}
+							},
+							"reservation": {
+								"remaining_amount": 0,
+								"id": "ff4081fb-46fd-4333-a42d-9f90c9db2233",
+								"payeur_name": "jojo",
+								"payeur_phone": "680254896",
+								"payeur_email": "jojo@gmail.com",
+								"pack_id": "ab93b402-66b5-4f18-a9c3-da877e326a3f",
+								"pack_name_snapshot": "Famille",
+								"unit_price": 10000,
+								"quantity": 3,
+								"total_price": 10000,
+								"total_paid": 10000,
+								"status": "ticket_generated",
+								"createdAt": "2025-12-02T10:49:41.979Z",
+								"updatedAt": "2025-12-02T10:51:27.754Z",
+								"participants": [
+									{
+										"id": "c32cee58-12cc-47e0-8461-ba6bcedb7f6e",
+										"reservation_id": "ff4081fb-46fd-4333-a42d-9f90c9db2233",
+										"name": "sarah",
+										"phone": "623584561",
+										"email": null,
+										"ticket_id": null,
+										"entrance_validated": false,
+										"createdAt": "2025-12-02T10:49:41.985Z",
+										"updatedAt": "2025-12-02T10:49:41.985Z"
+									},
+									{
+										"id": "8eb22fb3-f40b-4da1-855f-bb3d1e38e02a",
+										"reservation_id": "ff4081fb-46fd-4333-a42d-9f90c9db2233",
+										"name": "pierre pharel",
+										"phone": "654789521",
+										"email": null,
+										"ticket_id": null,
+										"entrance_validated": false,
+										"createdAt": "2025-12-02T10:49:41.985Z",
+										"updatedAt": "2025-12-02T10:49:41.985Z"
+									},
+									{
+										"id": "8be046d2-e303-475a-bb99-856c33eca1dd",
+										"reservation_id": "ff4081fb-46fd-4333-a42d-9f90c9db2233",
+										"name": "jojo",
+										"phone": "680254896",
+										"email": "jojo@gmail.com",
+										"ticket_id": "5c5c467c-407b-432c-bb53-8d1b10f68dd2",
+										"entrance_validated": true,
+										"createdAt": "2025-12-02T10:49:41.985Z",
+										"updatedAt": "2025-12-02T15:40:59.166Z"
+									}
+								]
+							}
+						}
+					}]
+				},
+				{
+					"name": "Valider QR Scans",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjAyYWUxOTNiLTBmNjMtNDJkZi1iMDM5LWQ5ODQ5OThmMGQyYSIsImVtYWlsIjoiYWRtaW5AdGVzdC5jb20iLCJyb2xlIjoiYWRtaW4iLCJpYXQiOjE3NjQ2MDI2MzIsImV4cCI6MTc2NTIwNzQzMn0.AS_m8n2FfamYNUsvUmOH6anlqXA49qQ4S5SQ29bb5vQ",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\r\n  \"ticket_number\": \"MIP-MIOGK08P-COVWOW\",\r\n  \"participant_id\": \"8be046d2-e303-475a-bb99-856c33eca1dd\"\r\n}\r\n",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/scan/validate",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"scan",
+								"validate"
+							]
+						}
+					},
+					"response": [{
+						"status": 200,
+						"message": "Participant validated",
+						"data": {
+							"ticket_status": "valid",
+							"participant": {
+								"id": "8be046d2-e303-475a-bb99-856c33eca1dd",
+								"reservation_id": "ff4081fb-46fd-4333-a42d-9f90c9db2233",
+								"name": "jojo",
+								"phone": "680254896",
+								"email": "jojo@gmail.com",
+								"ticket_id": "5c5c467c-407b-432c-bb53-8d1b10f68dd2",
+								"entrance_validated": true,
+								"createdAt": "2025-12-02T10:49:41.985Z",
+								"updatedAt": "2025-12-02T15:40:59.166Z"
+							}
+						}
+					}]
+				}
+			]
+		},
+		{
+			"name": "Tickets",
+			"item": [
+				{
+					"name": "Get Tickets",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjAyYWUxOTNiLTBmNjMtNDJkZi1iMDM5LWQ5ODQ5OThmMGQyYSIsImVtYWlsIjoiYWRtaW5AdGVzdC5jb20iLCJyb2xlIjoic3VwZXJhZG1pbiIsImlhdCI6MTc2NDYwMzkyNywiZXhwIjoxNzY1MjA4NzI3fQ.NEmzXAKqtIgAPTv5CeGMl_Qdp4E5D4Iq7zXnaX40sdY",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/tickets",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"tickets"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Ticket",
+					"protocolProfileBehavior": {
+						"disableBodyPruning": true
+					},
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjAyYWUxOTNiLTBmNjMtNDJkZi1iMDM5LWQ5ODQ5OThmMGQyYSIsImVtYWlsIjoiYWRtaW5AdGVzdC5jb20iLCJyb2xlIjoiYWRtaW4iLCJpYXQiOjE3NjQ2MDI2MzIsImV4cCI6MTc2NTIwNzQzMn0.AS_m8n2FfamYNUsvUmOH6anlqXA49qQ4S5SQ29bb5vQ",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/tickets/:id",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"tickets",
+								":id"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": ""
+								}
 							]
 						}
 					},

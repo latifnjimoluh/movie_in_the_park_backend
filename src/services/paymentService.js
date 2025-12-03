@@ -43,7 +43,7 @@ const addPayment = async (reservationId, paymentData, userId, proofFile = null) 
     }
 
     const remainingAmount = reservation.total_price - reservation.total_paid
-    
+
     // ✅ Vérification si le montant dépasse le montant restant
     if (paymentData.amount > remainingAmount) {
       throw {
@@ -56,7 +56,7 @@ const addPayment = async (reservationId, paymentData, userId, proofFile = null) 
     let proofPath = null
     if (proofFile) {
       const uploadsDir = path.join(__dirname, "..", "uploads", "payment-proofs")
-      
+
       // Créer le dossier s'il n'existe pas
       try {
         await fs.access(uploadsDir)
@@ -64,14 +64,10 @@ const addPayment = async (reservationId, paymentData, userId, proofFile = null) 
         await fs.mkdir(uploadsDir, { recursive: true })
       }
 
-      const fileExtension = path.extname(proofFile.originalname)
-      const filename = `proof-${reservationId}-${Date.now()}${fileExtension}`
-      const fullPath = path.join(uploadsDir, filename)
-
-      await fs.writeFile(fullPath, proofFile.buffer)
+      const filename = path.basename(proofFile.path)
       proofPath = `/uploads/payment-proofs/${filename}`
-      
-      logger.info("Proof file saved:", { fullPath, proofPath })
+
+      logger.info("Proof file saved:", { path: proofFile.path, proofPath })
     }
 
     const payment = await Payment.create(
@@ -95,10 +91,7 @@ const addPayment = async (reservationId, paymentData, userId, proofFile = null) 
       newStatus = "paid"
     }
 
-    await reservation.update(
-      { total_paid: newTotalPaid, status: newStatus },
-      { transaction },
-    )
+    await reservation.update({ total_paid: newTotalPaid, status: newStatus }, { transaction })
 
     // ✅ Mapping des méthodes de paiement en français
     const methodLabels = {
@@ -171,7 +164,7 @@ const deletePayment = async (paymentId, reservationId, userId) => {
 
     // ✅ Supprimer le fichier de preuve s'il existe
     if (payment.proof_url) {
-      const filePath = path.join(__dirname, "..", payment.proof_url)
+      const filePath = path.join(__dirname, "..", "uploads", "payments", path.basename(payment.proof_url))
       try {
         await fs.unlink(filePath)
         logger.info("Proof file deleted:", filePath)
@@ -191,10 +184,7 @@ const deletePayment = async (paymentId, reservationId, userId) => {
 
     await payment.destroy({ transaction })
 
-    await reservation.update(
-      { total_paid: newTotalPaid, status: newStatus },
-      { transaction },
-    )
+    await reservation.update({ total_paid: newTotalPaid, status: newStatus }, { transaction })
 
     // -------------------------------------------------------------
     // 🟡 ACTION LOG (lisible par un non technicien)

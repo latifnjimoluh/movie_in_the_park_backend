@@ -5,6 +5,7 @@ const { checkPermission } = require("../middlewares/permissions")
 const { validate, createReservationSchema } = require("../middlewares/validation")
 const { addPayment } = require("../services/paymentService")
 const logger = require("../config/logger")
+const uploadPaymentProof = require("../middlewares/uploadPaymentProof")
 
 const router = express.Router()
 
@@ -73,8 +74,6 @@ router.post("/", validate(createReservationSchema), async (req, res) => {
       })
     }
 
-    // Le prix total pour la réservation correspond au prix du pack,
-    // il ne doit pas être multiplié par le nombre de participants
     const total_price = pack.price
 
     const reservation = await Reservation.create(
@@ -154,24 +153,30 @@ router.get("/:id", verifyToken, checkPermission("reservations.view"), async (req
   })
 })
 
-router.post("/:id/payments", verifyToken, checkPermission("payments.add"), async (req, res) => {
-  const { amount, method, comment } = req.body
+router.post(
+  "/:id/payments",
+  verifyToken,
+  checkPermission("payments.add"),
+  uploadPaymentProof.single("proof"),
+  async (req, res) => {
+    const { amount, method, comment } = req.body
 
-  try {
-    const result = await addPayment(req.params.id, { amount, method, comment }, req.user.id)
+    try {
+      const result = await addPayment(req.params.id, { amount, method, comment }, req.user.id, req.file)
 
-    res.json({
-      status: 200,
-      message: "Payment added",
-      data: result,
-    })
-  } catch (err) {
-    const statusCode = err.status || 500
-    res.status(statusCode).json({
-      status: statusCode,
-      message: err.message,
-    })
-  }
-})
+      res.json({
+        status: 200,
+        message: "Payment added",
+        data: result,
+      })
+    } catch (err) {
+      const statusCode = err.status || 500
+      res.status(statusCode).json({
+        status: statusCode,
+        message: err.message,
+      })
+    }
+  },
+)
 
 module.exports = router

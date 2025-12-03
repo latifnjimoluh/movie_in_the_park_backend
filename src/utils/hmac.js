@@ -21,7 +21,7 @@ const verifySignature = (data, signature, secret) => {
   return signature === expectedSignature
 }
 
-const generateQRPayload = (ticketNumber, reservationId, secret) => {
+const generateQRPayload = (ticketNumber, reservationId, participants, payer, secret) => {
   if (!secret) {
     throw new Error("Cannot generate QR payload: QR_SECRET environment variable is missing")
   }
@@ -35,6 +35,8 @@ const generateQRPayload = (ticketNumber, reservationId, secret) => {
     reservation_id: reservationId,
     timestamp,
     signature,
+    participants: participants || [],
+    payer: payer || {},
   }
 }
 
