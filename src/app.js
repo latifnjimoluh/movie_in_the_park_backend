@@ -5,9 +5,10 @@ const cors = require("cors")
 const helmet = require("helmet")
 const path = require("path")
 const cron = require("node-cron")
+const fetch = require("node-fetch")
 
 // Models / Services
-const ActionLog = require("./models/ActionLog")      // 🟢 => IMPORTANT
+const ActionLog = require("./models/ActionLog")
 const actionLogService = require("./services/logService")
 
 // Routes
@@ -64,48 +65,50 @@ app.use("/api/scan", scanRoutes)
 app.use("/api/users", userRoutes)
 
 /* ====================================
-   🔵 STOCKAGE INTERNE DU CRON
-==================================== */
-let latestLogs = {
-  timestamp: null,
-  total: 0,
-  logs: []
-}
-
-/* ====================================
-   CRON JOB — toutes les 10 minutes
-==================================== */
-cron.schedule("*/10 * * * *", async () => {
-  try {
-    console.log("⏱️ Cron exécuté :", new Date().toISOString())
-
-    const result = await actionLogService.getAllLogs(100, 0)
-
-    latestLogs = {
-      timestamp: new Date().toISOString(),
-      total: result?.count || 0,
-      logs: result?.rows || []
-    }
-
-    console.log(`📘 Logs mis à jour : ${latestLogs.total} entrées`)
-  } catch (err) {
-    console.error("❌ Erreur CRON :", err.message)
-  }
-})
-
-/* ====================================
    HEALTH CHECK — amélioré
 ==================================== */
 app.get("/api/health", (req, res) => {
   res.json({
     status: "ok",
-    timestamp: new Date().toISOString(),
-    logs_last_update: latestLogs.timestamp,
-    logs_total: latestLogs.total,
-    
-    // ⬇ on renvoie seulement les 10 derniers 
-    logs_preview: latestLogs.logs.slice(0, 10)
+    timestamp: new Date().toISOString()
   })
+})
+
+/* ====================================
+   KEEPALIVE ENDPOINT
+==================================== */
+app.get("/api/keepalive", (req, res) => {
+  res.json({
+    status: "alive",
+    time: new Date().toISOString()
+  })
+})
+
+/* ====================================
+   🔥 NOUVEAU CRON — KEEP ALIVE
+   Toutes les 10 minutes
+==================================== */
+cron.schedule("*/10 * * * *", async () => {
+  console.log("⏱️ CRON KEEPALIVE lancé :", new Date().toISOString())
+
+  const frontendUrl = process.env.FRONTEND_LOGIN_URL
+  const backendUrl = process.env.BACKEND_KEEPALIVE_URL
+
+  try {
+    // Ping du frontend
+    if (frontendUrl) {
+      const res1 = await fetch(frontendUrl)
+      console.log("🌐 Ping frontend login :", res1.status)
+    }
+
+    // Ping du backend
+    if (backendUrl) {
+      const res2 = await fetch(backendUrl)
+      console.log("🟢 Ping backend keepalive :", res2.status)
+    }
+  } catch (err) {
+    console.error("❌ Erreur CRON keepalive :", err.message)
+  }
 })
 
 /* ====================================
