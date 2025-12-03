@@ -1,22 +1,86 @@
 const nodemailer = require("nodemailer")
+const sgMail = require("@sendgrid/mail")
 const logger = require("../config/logger")
 const path = require("path")
 const PDFDocument = require("pdfkit")
 const { Readable } = require("stream")
 const fs = require("fs")
 
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,
-  port: process.env.SMTP_PORT,
-  secure: process.env.SMTP_SECURE === "true",
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
-  },
-  tls: {
-    rejectUnauthorized: false,
-  },
-})
+// Configuration du provider d'email
+const EMAIL_PROVIDER = process.env.EMAIL_PROVIDER || "gmail" // 'gmail' ou 'sendgrid'
+
+// Configuration de nodemailer pour Gmail
+let transporter = null
+if (EMAIL_PROVIDER === "gmail") {
+  transporter = nodemailer.createTransport({
+    host: process.env.SMTP_HOST,
+    port: process.env.SMTP_PORT,
+    secure: process.env.SMTP_SECURE === "true",
+    auth: {
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASS,
+    },
+    tls: {
+      rejectUnauthorized: false,
+    },
+  })
+  logger.info("Email provider: Gmail SMTP")
+} else if (EMAIL_PROVIDER === "sendgrid") {
+  sgMail.setApiKey(process.env.SENDGRID_API_KEY)
+  logger.info("Email provider: SendGrid API")
+} else {
+  logger.error(`Unknown EMAIL_PROVIDER: ${EMAIL_PROVIDER}. Using Gmail as fallback.`)
+  transporter = nodemailer.createTransport({
+    host: process.env.SMTP_HOST,
+    port: process.env.SMTP_PORT,
+    secure: process.env.SMTP_SECURE === "true",
+    auth: {
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASS,
+    },
+    tls: {
+      rejectUnauthorized: false,
+    },
+  })
+}
+
+/**
+ * Fonction unifiée pour envoyer un email via Gmail ou SendGrid
+ */
+const sendEmail = async (mailOptions) => {
+  try {
+    if (EMAIL_PROVIDER === "sendgrid") {
+      // Format SendGrid
+      const sgMailOptions = {
+        to: mailOptions.to,
+        from: mailOptions.from || process.env.EMAIL_FROM,
+        subject: mailOptions.subject,
+        html: mailOptions.html,
+      }
+
+      // Gérer les pièces jointes
+      if (mailOptions.attachments && mailOptions.attachments.length > 0) {
+        sgMailOptions.attachments = mailOptions.attachments.map((att) => ({
+          content: att.content.toString("base64"),
+          filename: att.filename,
+          type: att.contentType || "application/octet-stream",
+          disposition: "attachment",
+        }))
+      }
+
+      await sgMail.send(sgMailOptions)
+      logger.info(`Email sent via SendGrid to ${mailOptions.to}`)
+    } else {
+      // Gmail SMTP
+      await transporter.sendMail(mailOptions)
+      logger.info(`Email sent via Gmail to ${mailOptions.to}`)
+    }
+  } catch (error) {
+    logger.error(`Error sending email to ${mailOptions.to}: ${error.message}`)
+    throw error
+  }
+}
+
 // Format propre des montants en XAF
 const formatXAF = (n) =>
   Number(n)
@@ -53,7 +117,7 @@ const generatePaymentReceiptPDF = async (reservation, payment, currentPayments) 
       const dateStr = now.toLocaleDateString("fr-FR")
       const timeStr = now.toLocaleTimeString("fr-FR")
 
-      doc.fontSize(10).text("Date d’émission", 430, 35)
+      doc.fontSize(10).text("Date d'émission", 430, 35)
       doc.font("Helvetica-Bold").fontSize(14).text(`${dateStr} à ${timeStr}`, 430, 55)
 
       /* ---------------------------------------------
@@ -79,81 +143,63 @@ const generatePaymentReceiptPDF = async (reservation, payment, currentPayments) 
       doc.text(reservation.pack_name_snapshot || reservation.pack_name, 300, 255)
 
       /* ============================================================
-         📦 CADRE - DÉTAILS DU PAIEMENT — FULL FIXED
+         📦 CADRE - DÉTAILS DU PAIEMENT
       ============================================================ */
-
-      /* ===============================
-      /* ===============================
-          DETAILS DU PAIEMENT – FIX FINAL
-      =============================== */
 
       const boxX = 25
       const boxY = 310
       const boxW = 545
       const boxH = 150
 
-      // Box grise
       doc.roundedRect(boxX, boxY, boxW, boxH, 6).stroke("#ccc")
 
-      // Titre
       doc.font("Helvetica-Bold").fontSize(16).fillColor("#000")
       doc.text("Détails du paiement", boxX + 15, boxY + 15)
 
-      // Zones internes
       const labelX = boxX + 15
       const valueAreaX = boxX + 300
       const valueAreaWidth = boxW - 320
 
       let lineY = boxY + 55
 
-      // --- Prix total ---
+      // Prix total
       doc.font("Helvetica").fontSize(11).fillColor("#666")
       doc.text("Prix total", labelX, lineY)
-
       doc.font("Helvetica-Bold").fontSize(16).fillColor("#000")
       doc.text(`${formatXAF(reservation.total_price)} XAF`, valueAreaX, lineY - 2, {
         width: valueAreaWidth,
         align: "right",
       })
 
-      // --- Montant payé ---
+      // Montant payé
       lineY += 32
-
       doc.font("Helvetica").fontSize(11).fillColor("#666")
       doc.text("Montant payé", labelX, lineY)
-
       doc.font("Helvetica-Bold").fontSize(16).fillColor("#16a34a")
       doc.text(`${formatXAF(reservation.total_paid)} XAF`, valueAreaX, lineY - 2, {
         width: valueAreaWidth,
         align: "right",
       })
 
-      // --- Montant restant ---
+      // Montant restant
       lineY += 32
-
       const remaining = reservation.total_price - reservation.total_paid
-
       doc.font("Helvetica").fontSize(11).fillColor("#000")
       doc.text("Montant restant", labelX, lineY)
-
       doc.font("Helvetica-Bold").fontSize(18).fillColor("#ea580c")
       doc.text(`${formatXAF(remaining)} XAF`, valueAreaX, lineY - 4, { width: valueAreaWidth, align: "right" })
 
       /* ---------------------------------------------
          💵 DERNIERS PAIEMENTS
       ----------------------------------------------*/
-      /* ===============================
-          DERNIERS PAIEMENTS – FIX FINAL
-      =============================== */
-
       doc.fillColor("#000").font("Helvetica-Bold").fontSize(16)
       doc.text("Derniers paiements", 30, 500)
 
       doc.font("Helvetica").fontSize(11).fillColor("#000")
 
       const startY = 530
-      const valueAreaX2 = 350 // début zone de droite
-      const valueAreaWidth2 = 200 // largeur zone droite
+      const valueAreaX2 = 350
+      const valueAreaWidth2 = 200
 
       const lastPayments = currentPayments.slice(0, 3)
 
@@ -164,10 +210,7 @@ const generatePaymentReceiptPDF = async (reservation, payment, currentPayments) 
           const date = new Date(p.createdAt).toLocaleDateString("fr-FR")
           const method = p.method === "cash" ? "Espèces" : p.method === "momo" ? "Mobile Money" : p.method
 
-          // Texte gauche
           doc.font("Helvetica").text(`${date} — ${method}`, 30, startY + i * 28)
-
-          // Montant aligné à droite
           doc.font("Helvetica-Bold")
           doc.text(`${formatXAF(p.amount)} XAF`, valueAreaX2, startY + i * 28, {
             width: valueAreaWidth2,
@@ -268,8 +311,8 @@ const sendPayerEmail = async (reservation, participants, pack) => {
   `
 
   try {
-    await transporter.sendMail({
-      from: process.env.SMTP_FROM,
+    await sendEmail({
+      from: process.env.SMTP_FROM || process.env.EMAIL_FROM,
       to: reservation.payeur_email,
       subject: `Confirmation de réservation - Movie In The Park`,
       html: htmlContent,
@@ -285,8 +328,6 @@ const sendPayerEmail = async (reservation, participants, pack) => {
 ----------------------------------------------*/
 const sendParticipantEmail = async (participant, reservation, pack) => {
   if (!participant.email) return
-
-  // NE PAS envoyer au payeur
   if (participant.email === reservation.payeur_email) return
 
   const htmlContent = `
@@ -358,8 +399,8 @@ const sendParticipantEmail = async (participant, reservation, pack) => {
   `
 
   try {
-    await transporter.sendMail({
-      from: process.env.SMTP_FROM,
+    await sendEmail({
+      from: process.env.SMTP_FROM || process.env.EMAIL_FROM,
       to: participant.email,
       subject: `Participation confirmée - Movie In The Park`,
       html: htmlContent,
@@ -460,8 +501,8 @@ const sendPaymentConfirmationEmail = async (reservation, payment, allPayments) =
   try {
     const pdfBuffer = await generatePaymentReceiptPDF(reservation, payment, allPayments)
 
-    await transporter.sendMail({
-      from: process.env.SMTP_FROM,
+    await sendEmail({
+      from: process.env.SMTP_FROM || process.env.EMAIL_FROM,
       to: reservation.payeur_email,
       subject: `Confirmation de paiement - Movie In The Park (${payment.amount.toLocaleString()} XAF)`,
       html: htmlContent,
@@ -543,8 +584,8 @@ const sendTicketReadyEmail = async (reservation, ticketData) => {
   `
 
   try {
-    await transporter.sendMail({
-      from: process.env.SMTP_FROM,
+    await sendEmail({
+      from: process.env.SMTP_FROM || process.env.EMAIL_FROM,
       to: reservation.payeur_email,
       subject: `Votre ticket est prêt! - Movie In The Park (${ticketData.ticket_number})`,
       html: htmlContent,
@@ -557,7 +598,6 @@ const sendTicketReadyEmail = async (reservation, ticketData) => {
 
 /* ===== TICKET WITH PDF EMAIL ===== */
 const sendTicketWithPDFEmail = async (reservation, ticketData, participants, pdfBuffer) => {
-
   logger.info(`[sendTicketWithPDFEmail] Starting email send for reservation ${reservation.id}`)
 
   const emailsToSend = []
@@ -571,7 +611,7 @@ const sendTicketWithPDFEmail = async (reservation, ticketData, participants, pdf
     })
   }
 
-  // 2. Ajouter les participants avec emails (sauf le payeur)
+    // 2. Ajouter les participants avec emails (sauf le payeur)
   if (participants && Array.isArray(participants)) {
     participants.forEach((p) => {
       if (p.email && p.email !== reservation.payeur_email) {
@@ -592,9 +632,10 @@ const sendTicketWithPDFEmail = async (reservation, ticketData, participants, pdf
 
   logger.info(`[sendTicketWithPDFEmail] Found ${emailsToSend.length} recipients to send ticket to`)
 
-  // Récupérer le PDF du ticket
-  let ticketPdfPath = ticketData.pdf_url
-  if (ticketPdfPath.startsWith("/")) {
+  // Récupérer le PDF du ticket si pas fourni
+  let ticketPdfPath = ticketData?.pdf_url || ticketData?.path || null
+  if (ticketPdfPath && ticketPdfPath.startsWith("/")) {
+    // ton projet a un dossier 'backend' à la racine; ajuste si nécessaire
     ticketPdfPath = path.join(process.cwd(), "backend", ticketPdfPath)
   }
 
@@ -605,7 +646,7 @@ const sendTicketWithPDFEmail = async (reservation, ticketData, participants, pdf
     const maxAttempts = 5
 
     while (attempts < maxAttempts && !pdfBuffer) {
-      if (fs.existsSync(ticketPdfPath)) {
+      if (ticketPdfPath && fs.existsSync(ticketPdfPath)) {
         try {
           pdfBuffer = fs.readFileSync(ticketPdfPath)
           logger.info(`[sendTicketWithPDFEmail] PDF file found and read successfully (attempt ${attempts + 1})`)
@@ -613,16 +654,12 @@ const sendTicketWithPDFEmail = async (reservation, ticketData, participants, pdf
         } catch (readErr) {
           logger.warn(`[sendTicketWithPDFEmail] Error reading PDF (attempt ${attempts + 1}): ${readErr.message}`)
           attempts++
-          if (attempts < maxAttempts) {
-            await new Promise((resolve) => setTimeout(resolve, 200))
-          }
+          if (attempts < maxAttempts) await new Promise((resolve) => setTimeout(resolve, 200))
         }
       } else {
         logger.warn(`[sendTicketWithPDFEmail] PDF file does not exist yet (attempt ${attempts + 1}): ${ticketPdfPath}`)
         attempts++
-        if (attempts < maxAttempts) {
-          await new Promise((resolve) => setTimeout(resolve, 200))
-        }
+        if (attempts < maxAttempts) await new Promise((resolve) => setTimeout(resolve, 200))
       }
     }
 
@@ -633,22 +670,25 @@ const sendTicketWithPDFEmail = async (reservation, ticketData, participants, pdf
     logger.warn(`[sendTicketWithPDFEmail] Error accessing PDF: ${err.message}`)
   }
 
-  // Envoyer les emails
+  // Envoyer les emails à chaque destinataire
   for (const recipient of emailsToSend) {
-    await sendTicketEmailToRecipient(recipient, reservation, ticketData, pdfBuffer)
+    try {
+      await sendTicketEmailToRecipient(recipient, reservation, ticketData, pdfBuffer)
+    } catch (err) {
+      logger.error(`[sendTicketWithPDFEmail] Failed sending to ${recipient.email}: ${err.message}`)
+    }
   }
 
-  logger.info(`[sendTicketWithPDFEmail] All ticket emails sent for reservation ${reservation.id}`)
+  logger.info(`[sendTicketWithPDFEmail] All ticket emails processed for reservation ${reservation.id}`)
 }
 
+/* ===== helper: envoi d'un email de ticket à un destinataire unique ===== */
 const sendTicketEmailToRecipient = async (recipient, reservation, ticketData, pdfBuffer) => {
   const isPayer = recipient.role === "payer"
 
   const headerText = isPayer ? "Votre Ticket est Prêt! 🎬" : "Félicitations pour votre participation! 🎬"
 
-  const greeting = isPayer
-    ? `Bonjour <strong>${recipient.name}</strong>,`
-    : `Bonjour <strong>${recipient.name}</strong>,`
+  const greeting = `Bonjour <strong>${recipient.name || "Participant"}</strong>,`
 
   const mainMessage = isPayer
     ? `Félicitations! Votre paiement a été reçu en totalité et votre ticket a été généré avec succès. Vous pouvez maintenant profiter de l'événement Movie In The Park.`
@@ -669,19 +709,20 @@ const sendTicketEmailToRecipient = async (recipient, reservation, ticketData, pd
     ? `
       <div class="section">
         <div class="label">📦 Pack choisi</div>
-        <p><strong>${reservation.pack_name_snapshot || "N/A"}</strong></p>
-        <p><strong>Nombre de participants :</strong> ${reservation.quantity}</p>
-        <p><strong>Montant total payé :</strong> <span style="color: #16a34a; font-weight: bold;">${reservation.total_paid.toLocaleString()} XAF</span></p>
+        <p><strong>${reservation.pack_name_snapshot || reservation.pack_name || "N/A"}</strong></p>
+        <p><strong>Nombre de participants :</strong> ${reservation.quantity || 1}</p>
+        <p><strong>Montant total payé :</strong> <span style="color: #16a34a; font-weight: bold;">${(reservation.total_paid || 0).toLocaleString()} XAF</span></p>
       </div>
     `
     : `
       <div class="section">
         <div class="label">📦 Pack choisi</div>
-        <p><strong>${reservation.pack_name_snapshot || "N/A"}</strong></p>
-        <p><strong>Nombre de participants :</strong> ${reservation.quantity}</p>
+        <p><strong>${reservation.pack_name_snapshot || reservation.pack_name || "N/A"}</strong></p>
+        <p><strong>Nombre de participants :</strong> ${reservation.quantity || 1}</p>
       </div>
     `
 
+  // HTML complet de l'email (tu peux remplacer par ton template complet si tu veux)
   const htmlContent = `
     <!DOCTYPE html>
     <html lang="fr">
@@ -692,64 +733,12 @@ const sendTicketEmailToRecipient = async (recipient, reservation, ticketData, pd
         .container { max-width: 600px; margin: 0 auto; background: #f9f9f9; padding: 20px; border-radius: 8px; }
         .header { background: linear-gradient(135deg, #16a34a 0%, #15803d 100%); color: white; padding: 20px; border-radius: 8px 8px 0 0; text-align: center; }
         .header h1 { margin: 0; font-size: 28px; }
-        .header p { margin: 5px 0 0; font-size: 14px; opacity: 0.9; }
         .content { background: white; padding: 30px; border-radius: 0 0 8px 8px; }
         .section { margin: 25px 0; padding-bottom: 20px; border-bottom: 1px solid #eee; }
-        .section:last-child { border-bottom: none; }
         .label { font-weight: bold; color: #16a34a; font-size: 16px; margin-bottom: 10px; }
-        .ticket-box { 
-          background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%); 
-          border-left: 4px solid #16a34a; 
-          padding: 20px; 
-          margin: 20px 0; 
-          border-radius: 5px; 
-          text-align: center; 
-          box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        }
-        .ticket-number { 
-          font-family: 'Courier New', monospace; 
-          font-size: 24px; 
-          font-weight: bold; 
-          color: #16a34a; 
-          letter-spacing: 2px;
-          margin: 10px 0;
-        }
-        .qr-code { 
-          background: white; 
-          padding: 15px; 
-          border-radius: 5px; 
-          display: inline-block; 
-          margin-top: 10px;
-        }
-        .qr-code img { 
-          max-width: 150px; 
-          height: auto; 
-        }
-        .instructions { 
-          background: #f0f4ff; 
-          border-left: 4px solid #667eea; 
-          padding: 15px; 
-          margin: 20px 0; 
-          border-radius: 5px; 
-        }
-        .instructions ol { 
-          margin: 10px 0; 
-          padding-left: 20px; 
-        }
-        .instructions li { 
-          margin: 8px 0; 
-        }
-        .footer { 
-          text-align: center; 
-          font-size: 12px; 
-          color: #999; 
-          margin-top: 20px; 
-          padding-top: 15px; 
-          border-top: 1px solid #eee; 
-        }
-        .footer p { 
-          margin: 5px 0; 
-        }
+        .ticket-box { background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%); border-left: 4px solid #16a34a; padding: 20px; margin: 20px 0; border-radius: 5px; text-align: center; }
+        .ticket-number { font-family: 'Courier New', monospace; font-size: 24px; font-weight: bold; color: #16a34a; letter-spacing: 2px; margin: 10px 0; }
+        .footer { text-align: center; font-size: 12px; color: #999; margin-top: 20px; padding-top: 15px; border-top: 1px solid #eee; }
       </style>
     </head>
     <body>
@@ -761,7 +750,6 @@ const sendTicketEmailToRecipient = async (recipient, reservation, ticketData, pd
 
         <div class="content">
           <p>${greeting}</p>
-          
           <p>${mainMessage}</p>
 
           <div class="ticket-box">
@@ -771,20 +759,7 @@ const sendTicketEmailToRecipient = async (recipient, reservation, ticketData, pd
           </div>
 
           ${packSection}
-          
           ${reservedBySection}
-
-          <div class="instructions">
-            <div class="label" style="font-size: 14px;">📋 Comment accéder à l'événement?</div>
-            <ol>
-              <li><strong>Imprimez votre ticket</strong> ou gardez-le sur votre téléphone</li>
-              <li><strong>Présentez le code QR</strong> à l'entrée de l'événement</li>
-              <li><strong>Amusez-vous bien!</strong> 🎬🍿</li>
-            </ol>
-            <p style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #e0e0e0; font-size: 12px; color: #666;">
-              Le code QR contient toutes les informations de votre réservation et sera scanné à l'entrée.
-            </p>
-          </div>
 
           <div class="section" style="padding-bottom: 0; border-bottom: none;">
             <p style="font-size: 12px; color: #666; margin: 0;">
@@ -805,12 +780,13 @@ const sendTicketEmailToRecipient = async (recipient, reservation, ticketData, pd
 
   try {
     const mailOptions = {
-      from: process.env.SMTP_FROM,
+      from: process.env.SMTP_FROM || process.env.EMAIL_FROM || process.env.SMTP_USER,
       to: recipient.email,
       subject: `Votre ticket Movie In The Park est prêt! (${ticketData.ticket_number})`,
       html: htmlContent,
     }
 
+    // joindre le PDF si disponible
     if (pdfBuffer) {
       mailOptions.attachments = [
         {
@@ -818,17 +794,19 @@ const sendTicketEmailToRecipient = async (recipient, reservation, ticketData, pd
           content: pdfBuffer,
           contentType: "application/pdf",
         },
-      ];
+      ]
     }
 
-
-    await transporter.sendMail(mailOptions)
+    await sendEmail(mailOptions)
     logger.info(`Ticket email sent to ${recipient.email} (role: ${recipient.role})`)
   } catch (error) {
     logger.error(`Error sending ticket email to ${recipient.email}: ${error.message}`)
   }
 }
 
+/* ---------------------------------------------
+   Export des fonctions
+----------------------------------------------*/
 module.exports = {
   sendPayerEmail,
   sendParticipantEmail,
@@ -836,5 +814,6 @@ module.exports = {
   sendTicketReadyEmail,
   sendTicketWithPDFEmail,
   sendTicketEmailToRecipient,
+  // expose le transporteur si d'autres modules l'attendent
   transporter,
 }
