@@ -8,7 +8,7 @@ const cron = require("node-cron")
 
 // Models / Services
 const ActionLog = require("./models/ActionLog")      // 🟢 => IMPORTANT
-const actionLogService = require("./services/actionLogService")
+const actionLogService = require("./services/logService")
 
 // Routes
 const authRoutes = require("./routes/authRoutes")
