@@ -379,55 +379,62 @@ router.get("/by-reservation/:reservationId", verifyToken, checkPermission("ticke
 // ---------------- STREAMING PDF DOWNLOAD ENDPOINT ----------------
 router.get("/:id/download", verifyToken, checkPermission("tickets.view"), async (req, res) => {
   try {
-    const { id } = req.params
+    const { id } = req.params;
 
-    const ticket = await Ticket.findByPk(id)
+    const ticket = await Ticket.findByPk(id);
     if (!ticket || !ticket.pdf_url) {
       return res.status(404).json({
         status: 404,
         message: "Ticket or PDF not found",
-      })
+      });
     }
 
-    // 🔥 Correction ici : ENLEVER le dossier "src"
-    const pdfPath = path.join(process.cwd(), ticket.pdf_url.replace("/uploads/", "uploads/"))
+    // ⭐ Correction universelle : local + Render
+    const pdfPath = path.join(
+      process.cwd(),
+      ticket.pdf_url.replace("/uploads/", "uploads/")
+    );
 
-    console.log("📌 PDF PATH USED:", pdfPath)
+    console.log("📌 PDF PATH USED:", pdfPath);
 
     if (!fs.existsSync(pdfPath)) {
-      console.log("❌ PDF NOT FOUND AT:", pdfPath)
+      console.log("❌ PDF NOT FOUND AT:", pdfPath);
       return res.status(404).json({
         status: 404,
         message: "PDF file not found on server",
-      })
+      });
     }
 
-    const stats = fs.statSync(pdfPath)
+    const stats = fs.statSync(pdfPath);
 
-    res.setHeader("Content-Type", "application/pdf")
-    res.setHeader("Content-Disposition", `attachment; filename="ticket-${ticket.ticket_number}.pdf"`)
-    res.setHeader("Content-Length", stats.size)
-    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate")
-    res.setHeader("Pragma", "no-cache")
-    res.setHeader("Expires", "0")
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="ticket-${ticket.ticket_number}.pdf"`
+    );
+    res.setHeader("Content-Length", stats.size);
+    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
 
-    const pdfStream = fs.createReadStream(pdfPath)
-    pdfStream.pipe(res)
+    const stream = fs.createReadStream(pdfPath);
+    stream.pipe(res);
 
-    pdfStream.on("error", (err) => {
-      logger.error("Error streaming PDF:", err)
+    stream.on("error", (err) => {
+      logger.error("Error streaming PDF:", err);
       if (!res.headersSent) {
-        res.status(500).json({ status: 500, message: "Error downloading PDF" })
+        res.status(500).json({ status: 500, message: "Error downloading PDF" });
       }
-    })
+    });
   } catch (err) {
-    logger.error("Error downloading ticket:", err)
+    logger.error("Error downloading ticket:", err);
     res.status(500).json({
       status: 500,
       message: "Failed to download ticket",
-    })
+    });
   }
-})
+});
+
 
 
 
