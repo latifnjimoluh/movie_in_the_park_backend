@@ -5,7 +5,9 @@ const cors = require("cors")
 const helmet = require("helmet")
 const path = require("path")
 const cron = require("node-cron")
-const fetch = require("node-fetch")
+
+// 👇 Utiliser le fetch natif de Node
+const fetch = global.fetch
 
 // Models / Services
 const ActionLog = require("./models/ActionLog")
@@ -25,14 +27,8 @@ const { errorHandler } = require("./middlewares/errorHandler")
 
 const app = express()
 
-/* ====================================
-   SECURITY
-==================================== */
 app.use(helmet())
 
-/* ====================================
-   CORS
-==================================== */
 app.use(cors({
   origin: [
     process.env.FRONTEND_URL || "http://localhost:3000",
@@ -41,21 +37,12 @@ app.use(cors({
   credentials: true
 }))
 
-/* ====================================
-   PARSERS
-==================================== */
 app.use(express.json({ limit: "10mb" }))
 app.use(express.urlencoded({ limit: "10mb", extended: true }))
 
-/* ====================================
-   STATIC FILES
-==================================== */
 const uploadPath = path.join(process.cwd(), "uploads")
 app.use("/uploads", express.static(uploadPath))
 
-/* ====================================
-   ROUTES
-==================================== */
 app.use("/api/auth", authRoutes)
 app.use("/api/packs", packRoutes)
 app.use("/api/reservations", reservationRoutes)
@@ -65,7 +52,7 @@ app.use("/api/scan", scanRoutes)
 app.use("/api/users", userRoutes)
 
 /* ====================================
-   HEALTH CHECK — amélioré
+   HEALTH CHECK
 ==================================== */
 app.get("/api/health", (req, res) => {
   res.json({
@@ -85,42 +72,35 @@ app.get("/api/keepalive", (req, res) => {
 })
 
 /* ====================================
-   🔥 NOUVEAU CRON — KEEP ALIVE
-   Toutes les 10 minutes
+   CRON KEEPALIVE — toutes les 10 minutes
 ==================================== */
-cron.schedule("*/10 * * * *", async () => {
+cron.schedule("*/5 * * * *", async () => {
   console.log("⏱️ CRON KEEPALIVE lancé :", new Date().toISOString())
 
   const frontendUrl = process.env.FRONTEND_LOGIN_URL
   const backendUrl = process.env.BACKEND_KEEPALIVE_URL
 
   try {
-    // Ping du frontend
+    // Ping frontend
     if (frontendUrl) {
       const res1 = await fetch(frontendUrl)
-      console.log("🌐 Ping frontend login :", res1.status)
+      console.log("🌐 Ping frontend login:", res1.status)
     }
 
-    // Ping du backend
+    // Ping backend
     if (backendUrl) {
       const res2 = await fetch(backendUrl)
-      console.log("🟢 Ping backend keepalive :", res2.status)
+      console.log("🟢 Ping backend keepalive:", res2.status)
     }
   } catch (err) {
     console.error("❌ Erreur CRON keepalive :", err.message)
   }
 })
 
-/* ====================================
-   404 HANDLER
-==================================== */
 app.use((req, res) => {
   res.status(404).json({ status: 404, message: "Route not found" })
 })
 
-/* ====================================
-   ERROR HANDLER
-==================================== */
 app.use(errorHandler)
 
 module.exports = app
