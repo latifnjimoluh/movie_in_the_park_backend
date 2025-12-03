@@ -375,6 +375,8 @@ router.get("/by-reservation/:reservationId", verifyToken, checkPermission("ticke
 })
 
 // ---------------- STREAMING PDF DOWNLOAD ENDPOINT ----------------
+// ---------------- STREAMING PDF DOWNLOAD ENDPOINT ----------------
+// ---------------- STREAMING PDF DOWNLOAD ENDPOINT ----------------
 router.get("/:id/download", verifyToken, checkPermission("tickets.view"), async (req, res) => {
   try {
     const { id } = req.params
@@ -387,28 +389,28 @@ router.get("/:id/download", verifyToken, checkPermission("tickets.view"), async 
       })
     }
 
-    const pdfPath = path.join(process.cwd(), "backend", ticket.pdf_url)
+    // 🔥 Correction ici : ENLEVER le dossier "src"
+    const pdfPath = path.join(process.cwd(), ticket.pdf_url.replace("/uploads/", "uploads/"))
+
+    console.log("📌 PDF PATH USED:", pdfPath)
 
     if (!fs.existsSync(pdfPath)) {
+      console.log("❌ PDF NOT FOUND AT:", pdfPath)
       return res.status(404).json({
         status: 404,
         message: "PDF file not found on server",
       })
     }
 
-    // Get file size for Content-Length header
     const stats = fs.statSync(pdfPath)
-    const fileSize = stats.size
 
-    // Set headers for download (forces save dialog on mobile)
     res.setHeader("Content-Type", "application/pdf")
     res.setHeader("Content-Disposition", `attachment; filename="ticket-${ticket.ticket_number}.pdf"`)
-    res.setHeader("Content-Length", fileSize)
+    res.setHeader("Content-Length", stats.size)
     res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate")
     res.setHeader("Pragma", "no-cache")
     res.setHeader("Expires", "0")
 
-    // Stream the file for better performance on mobile
     const pdfStream = fs.createReadStream(pdfPath)
     pdfStream.pipe(res)
 
@@ -426,6 +428,9 @@ router.get("/:id/download", verifyToken, checkPermission("tickets.view"), async 
     })
   }
 })
+
+
+
 
 // ---------------- IMAGE CONVERSION ENDPOINT FOR ANDROID GALLERY SAVE ----------------
 router.get("/:id/download-image", verifyToken, checkPermission("tickets.view"), async (req, res) => {
