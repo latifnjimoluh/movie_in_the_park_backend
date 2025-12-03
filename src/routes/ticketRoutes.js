@@ -4,6 +4,8 @@ const { verifyToken } = require("../middlewares/auth")
 const { checkPermission } = require("../middlewares/permissions")
 const { createTicket, generateQRDataUrl } = require("../services/ticketService")
 const logger = require("../config/logger")
+const path = require("path")
+const fs = require("fs")
 
 const router = express.Router()
 
@@ -18,8 +20,8 @@ const buildUrl = (req, relativePath) => {
 router.get("/", verifyToken, checkPermission("tickets.view"), async (req, res) => {
   try {
     // Parse query params safely
-    const page = Math.max(1, parseInt(req.query.page || "1", 10) || 1)
-    const pageSize = Math.max(1, parseInt(req.query.pageSize || "20", 10) || 20)
+    const page = Math.max(1, Number.parseInt(req.query.page || "1", 10) || 1)
+    const pageSize = Math.max(1, Number.parseInt(req.query.pageSize || "20", 10) || 20)
     const { q, status, packId, reservationId } = req.query
 
     const where = {}
@@ -79,9 +81,8 @@ router.get("/", verifyToken, checkPermission("tickets.view"), async (req, res) =
           pdf_url: buildUrl(req, ticket.pdf_url),
           generated_at: ticket.generated_at,
           created_at: ticket.createdAt,
-          reservation: ticket.reservation,
         }
-      })
+      }),
     )
 
     return res.json({
@@ -369,6 +370,103 @@ router.get("/by-reservation/:reservationId", verifyToken, checkPermission("ticke
     res.status(500).json({
       status: 500,
       message: "Failed to fetch ticket",
+    })
+  }
+})
+
+// ---------------- STREAMING PDF DOWNLOAD ENDPOINT ----------------
+router.get("/:id/download", verifyToken, checkPermission("tickets.view"), async (req, res) => {
+  try {
+    const { id } = req.params
+
+    const ticket = await Ticket.findByPk(id)
+    if (!ticket || !ticket.pdf_url) {
+      return res.status(404).json({
+        status: 404,
+        message: "Ticket or PDF not found",
+      })
+    }
+
+    const pdfPath = path.join(process.cwd(), "backend", ticket.pdf_url)
+
+    if (!fs.existsSync(pdfPath)) {
+      return res.status(404).json({
+        status: 404,
+        message: "PDF file not found on server",
+      })
+    }
+
+    // Get file size for Content-Length header
+    const stats = fs.statSync(pdfPath)
+    const fileSize = stats.size
+
+    // Set headers for download (forces save dialog on mobile)
+    res.setHeader("Content-Type", "application/pdf")
+    res.setHeader("Content-Disposition", `attachment; filename="ticket-${ticket.ticket_number}.pdf"`)
+    res.setHeader("Content-Length", fileSize)
+    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate")
+    res.setHeader("Pragma", "no-cache")
+    res.setHeader("Expires", "0")
+
+    // Stream the file for better performance on mobile
+    const pdfStream = fs.createReadStream(pdfPath)
+    pdfStream.pipe(res)
+
+    pdfStream.on("error", (err) => {
+      logger.error("Error streaming PDF:", err)
+      if (!res.headersSent) {
+        res.status(500).json({ status: 500, message: "Error downloading PDF" })
+      }
+    })
+  } catch (err) {
+    logger.error("Error downloading ticket:", err)
+    res.status(500).json({
+      status: 500,
+      message: "Failed to download ticket",
+    })
+  }
+})
+
+// ---------------- IMAGE CONVERSION ENDPOINT FOR ANDROID GALLERY SAVE ----------------
+router.get("/:id/download-image", verifyToken, checkPermission("tickets.view"), async (req, res) => {
+  try {
+    const { id } = req.params
+
+    const ticket = await Ticket.findByPk(id)
+    if (!ticket) {
+      return res.status(404).json({
+        status: 404,
+        message: "Ticket not found",
+      })
+    }
+
+    const qrPath = path.join(process.cwd(), "backend", ticket.qr_image_url)
+
+    if (!fs.existsSync(qrPath)) {
+      return res.status(404).json({
+        status: 404,
+        message: "QR image not found",
+      })
+    }
+
+    res.setHeader("Content-Type", "image/png")
+    res.setHeader("Content-Disposition", `attachment; filename="qr-${ticket.ticket_number}.png"`)
+    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate")
+
+    const imageStream = fs.createReadStream(qrPath)
+    imageStream.pipe(res)
+
+    imageStream.on("error", (err) => {
+      logger.error("Error streaming image:", err)
+      if (!res.headersSent) {
+        res.status(500).json({ status: 500, message: "Error downloading image" })
+      }
+    })
+  } catch (err) {
+    logger.error("Error downloading ticket image:", err)
+    res.status(500).json({
+      status: 500,
+      message: "Failed to download image",
     })
   }
 })

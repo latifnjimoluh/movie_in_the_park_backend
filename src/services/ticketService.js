@@ -89,53 +89,52 @@ const generateQRImage = async (payload) => {
 }
 
 const generateTicketPDFWithImage = async (reservation, ticketNumber, qrImageUrl, packName) => {
-  ensureUploadsDir();
+  ensureUploadsDir()
 
-  const pdfPath = path.join(UPLOADS_DIR, "tickets", `${ticketNumber}.pdf`);
+  const pdfPath = path.join(UPLOADS_DIR, "tickets", `${ticketNumber}.pdf`)
 
   return new Promise(async (resolve, reject) => {
     try {
-      const doc = new PDFDocument({ size: [1280, 400], margin: 0 });
-      const chunks = [];
+      const doc = new PDFDocument({ size: [1280, 400], margin: 0 })
+      const chunks = []
 
-      doc.on("data", (chunk) => chunks.push(chunk));
+      doc.on("data", (chunk) => chunks.push(chunk))
       doc.on("end", () => {
-        const buffer = Buffer.concat(chunks);
+        const buffer = Buffer.concat(chunks)
 
         // On écrit le fichier sur disque (optionnel)
-        fs.writeFileSync(pdfPath, buffer);
+        fs.writeFileSync(pdfPath, buffer)
 
         resolve({
           buffer, // <== SUPER IMPORTANT
           pdfUrl: `/uploads/tickets/${ticketNumber}.pdf`,
-        });
-      });
+        })
+      })
 
-      doc.on("error", reject);
+      doc.on("error", reject)
 
-      const templateKey = resolveTemplateKey(packName);
-      const templateUrl = TICKET_TEMPLATES[templateKey];
-      const qrPos = QR_POSITIONS[templateKey];
+      const templateKey = resolveTemplateKey(packName)
+      const templateUrl = TICKET_TEMPLATES[templateKey]
+      const qrPos = QR_POSITIONS[templateKey]
 
-      const templatePath = path.join(process.cwd(), templateUrl);
-      const imageBuffer = fs.readFileSync(templatePath);
+      const templatePath = path.join(process.cwd(), templateUrl)
+      const imageBuffer = fs.readFileSync(templatePath)
 
-      doc.image(imageBuffer, 0, 0, { width: 1280, height: 400 });
+      doc.image(imageBuffer, 0, 0, { width: 1280, height: 400 })
 
-      const qrPath = path.join(UPLOADS_DIR, qrImageUrl.replace("/uploads/", ""));
-      doc.image(qrPath, qrPos.x, qrPos.y, { width: qrPos.width });
+      const qrPath = path.join(UPLOADS_DIR, qrImageUrl.replace("/uploads/", ""))
+      doc.image(qrPath, qrPos.x, qrPos.y, { width: qrPos.width })
 
-      doc.rect(880, 330, 380, 40).fillOpacity(0.65).fill("#FFFFFF").fillOpacity(1);
-      doc.fontSize(18).fillColor("#000").text(`Ticket : ${ticketNumber}`, 900, 340);
+      doc.rect(880, 330, 380, 40).fillOpacity(0.65).fill("#FFFFFF").fillOpacity(1)
+      doc.fontSize(18).fillColor("#000").text(`Ticket : ${ticketNumber}`, 900, 340)
 
-      doc.end();
+      doc.end()
     } catch (err) {
-      logger.error("PDF generation failed:", err);
-      reject({ status: 500, message: "Failed to generate ticket PDF" });
+      logger.error("PDF generation failed:", err)
+      reject({ status: 500, message: "Failed to generate ticket PDF" })
     }
-  });
-};
-
+  })
+}
 
 const createTicket = async (reservationId, userId) => {
   const transaction = await sequelize.transaction()
@@ -179,10 +178,10 @@ const createTicket = async (reservationId, userId) => {
     const qrImageUrl = await generateQRImage(qrPayload)
 
     const packName = reservation.pack_name_snapshot || reservation.pack?.name || "Simple Soolouf"
-    const pdfResult = await generateTicketPDFWithImage(reservation, ticketNumber, qrImageUrl, packName);
+    const pdfResult = await generateTicketPDFWithImage(reservation, ticketNumber, qrImageUrl, packName)
 
-    const pdfBuffer = pdfResult.buffer;
-    const pdfUrl = pdfResult.pdfUrl;
+    const pdfBuffer = pdfResult.buffer
+    const pdfUrl = pdfResult.pdfUrl
 
     const ticket = await Ticket.create(
       {
@@ -223,20 +222,14 @@ const createTicket = async (reservationId, userId) => {
       qr_image_url: ticket.qr_image_url,
       pdf_url: ticket.pdf_url,
       pdf_buffer: pdfBuffer,
-
     }
 
-    await new Promise((resolve) => setTimeout(resolve, 500))
+    // Send email in background without awaiting
+    sendTicketWithPDFEmail(reservation, ticketData, participantsList, pdfBuffer).catch((err) => {
+      logger.error("Background email sending error:", err)
+    })
 
-    try {
-      await sendTicketWithPDFEmail(reservation, ticketData, participantsList, pdfBuffer);
-
-      logger.info(`Ticket emails sent successfully for reservation ${reservationId}`)
-    } catch (err) {
-      logger.error("Error in email sending:", err)
-      // Don't throw - ticket is already generated, just log the error
-    }
-
+    // Return immediately without waiting for emails
     return {
       ticket: {
         id: ticket.id,
