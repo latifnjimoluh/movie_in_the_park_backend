@@ -89,43 +89,53 @@ const generateQRImage = async (payload) => {
 }
 
 const generateTicketPDFWithImage = async (reservation, ticketNumber, qrImageUrl, packName) => {
-  ensureUploadsDir()
-  const pdfPath = path.join(UPLOADS_DIR, "tickets", `${ticketNumber}.pdf`)
+  ensureUploadsDir();
+
+  const pdfPath = path.join(UPLOADS_DIR, "tickets", `${ticketNumber}.pdf`);
 
   return new Promise(async (resolve, reject) => {
     try {
-      const doc = new PDFDocument({ size: [1280, 400], margin: 0 })
-      const stream = fs.createWriteStream(pdfPath)
+      const doc = new PDFDocument({ size: [1280, 400], margin: 0 });
+      const chunks = [];
 
-      doc.pipe(stream)
+      doc.on("data", (chunk) => chunks.push(chunk));
+      doc.on("end", () => {
+        const buffer = Buffer.concat(chunks);
 
-      const templateKey = resolveTemplateKey(packName)
-      const templateUrl = TICKET_TEMPLATES[templateKey]
-      const qrPos = QR_POSITIONS[templateKey]
+        // On écrit le fichier sur disque (optionnel)
+        fs.writeFileSync(pdfPath, buffer);
 
-      // LOAD TEMPLATE IMAGE
-      let imageBuffer = fs.readFileSync(path.join(process.cwd(), templateUrl))
-      doc.image(imageBuffer, 0, 0, { width: 1280, height: 400 })
+        resolve({
+          buffer, // <== SUPER IMPORTANT
+          pdfUrl: `/uploads/tickets/${ticketNumber}.pdf`,
+        });
+      });
 
-      // Load QR image
-      const qrPath = path.join(UPLOADS_DIR, qrImageUrl.replace("/uploads/", ""))
-      doc.image(qrPath, qrPos.x, qrPos.y, { width: qrPos.width })
+      doc.on("error", reject);
 
-      // ADD TICKET NUMBER
-      doc.rect(880, 330, 380, 40).fillOpacity(0.65).fill("#FFFFFF").fillOpacity(1)
-      doc.fontSize(18).fillColor("#000")
-      doc.text(`Ticket : ${ticketNumber}`, 900, 340)
+      const templateKey = resolveTemplateKey(packName);
+      const templateUrl = TICKET_TEMPLATES[templateKey];
+      const qrPos = QR_POSITIONS[templateKey];
 
-      doc.end()
+      const templatePath = path.join(process.cwd(), templateUrl);
+      const imageBuffer = fs.readFileSync(templatePath);
 
-      stream.on("finish", () => resolve(`/uploads/tickets/${ticketNumber}.pdf`))
-      stream.on("error", reject)
+      doc.image(imageBuffer, 0, 0, { width: 1280, height: 400 });
+
+      const qrPath = path.join(UPLOADS_DIR, qrImageUrl.replace("/uploads/", ""));
+      doc.image(qrPath, qrPos.x, qrPos.y, { width: qrPos.width });
+
+      doc.rect(880, 330, 380, 40).fillOpacity(0.65).fill("#FFFFFF").fillOpacity(1);
+      doc.fontSize(18).fillColor("#000").text(`Ticket : ${ticketNumber}`, 900, 340);
+
+      doc.end();
     } catch (err) {
-      logger.error("PDF generation failed:", err)
-      reject({ status: 500, message: "Failed to generate ticket PDF" })
+      logger.error("PDF generation failed:", err);
+      reject({ status: 500, message: "Failed to generate ticket PDF" });
     }
-  })
-}
+  });
+};
+
 
 const createTicket = async (reservationId, userId) => {
   const transaction = await sequelize.transaction()
@@ -139,23 +149,22 @@ const createTicket = async (reservationId, userId) => {
 
     await reservation.reload({
       include: [
-        { association: "participants", attributes: ["id", "name", "email"] },
+        { association: "participants", attributes: ["id", "name", "email", "phone"] },
         { association: "pack", attributes: ["id", "name"] },
       ],
       transaction,
     })
 
-    if (reservation.total_paid < reservation.total_price)
-      throw { status: 409, message: "Reservation not fully paid" }
+    if (reservation.total_paid < reservation.total_price) throw { status: 409, message: "Reservation not fully paid" }
 
-    if (reservation.status === "ticket_generated")
-      throw { status: 409, message: "Ticket already generated" }
+    if (reservation.status === "ticket_generated") throw { status: 409, message: "Ticket already generated" }
 
     const ticketNumber = generateTicketNumber()
 
     const participantsList = reservation.participants?.map((p) => ({
       name: p.name,
       email: p.email,
+      phone: p.phone,
     }))
 
     const payer = {
@@ -164,24 +173,16 @@ const createTicket = async (reservationId, userId) => {
       phone: reservation.payeur_phone,
     }
 
-    const qrPayload = generateQRPayload(
-      ticketNumber,
-      reservationId,
-      participantsList,
-      payer,
-      process.env.QR_SECRET
-    )
+    const qrPayload = generateQRPayload(ticketNumber, reservationId, participantsList, payer, process.env.QR_SECRET)
 
     const qrDataUrl = await generateQRDataUrl(qrPayload)
     const qrImageUrl = await generateQRImage(qrPayload)
 
     const packName = reservation.pack_name_snapshot || reservation.pack?.name || "Simple Soolouf"
-    const pdfUrl = await generateTicketPDFWithImage(
-      reservation,
-      ticketNumber,
-      qrImageUrl,
-      packName
-    )
+    const pdfResult = await generateTicketPDFWithImage(reservation, ticketNumber, qrImageUrl, packName);
+
+    const pdfBuffer = pdfResult.buffer;
+    const pdfUrl = pdfResult.pdfUrl;
 
     const ticket = await Ticket.create(
       {
@@ -192,7 +193,7 @@ const createTicket = async (reservationId, userId) => {
         pdf_url: pdfUrl,
         generated_by: userId,
       },
-      { transaction }
+      { transaction },
     )
 
     await reservation.update({ status: "ticket_generated" }, { transaction })
@@ -209,10 +210,32 @@ const createTicket = async (reservationId, userId) => {
           participants_count: participantsList.length,
         },
       },
-      { transaction }
+      { transaction },
     )
 
     await transaction.commit()
+
+    const { sendTicketWithPDFEmail } = require("./emailService")
+    const ticketData = {
+      id: ticket.id,
+      ticket_number: ticket.ticket_number,
+      qr_data_url: qrDataUrl,
+      qr_image_url: ticket.qr_image_url,
+      pdf_url: ticket.pdf_url,
+      pdf_buffer: pdfBuffer,
+
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 500))
+
+    try {
+      await sendTicketWithPDFEmail(reservation, ticketData, participantsList, pdfBuffer);
+
+      logger.info(`Ticket emails sent successfully for reservation ${reservationId}`)
+    } catch (err) {
+      logger.error("Error in email sending:", err)
+      // Don't throw - ticket is already generated, just log the error
+    }
 
     return {
       ticket: {

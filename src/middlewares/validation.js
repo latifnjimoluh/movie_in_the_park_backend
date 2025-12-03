@@ -9,16 +9,37 @@ const loginSchema = z.object({
 const createReservationSchema = z.object({
   payeur_name: z.string().min(2, "Name required"),
   payeur_phone: z.string().min(9, "Invalid phone"),
-  payeur_email: z.string().email().optional().or(z.literal("")),
+
+  // email facultatif, vide ou valide
+  payeur_email: z
+    .string()
+    .email("Invalid email")
+    .optional()
+    .or(z.literal(""))
+    .nullable(),
+
   pack_id: z.string().uuid("Invalid pack ID"),
+
   quantity: z.number().min(1, "Quantity must be at least 1"),
-  participants: z.array(
-    z.object({
-      name: z.string().min(2, "Participant name required"),
-      phone: z.string().optional(),
-      email: z.string().email().optional(),
-    }),
-  ),
+
+  participants: z
+    .array(
+      z.object({
+        name: z.string().min(2, "Participant name required"),
+
+        // téléphone facultatif
+        phone: z.string().optional().nullable().or(z.literal("")),
+
+        // email facultatif, vide ou valide
+        email: z
+          .string()
+          .email("Invalid email")
+          .optional()
+          .or(z.literal(""))
+          .nullable(),
+      })
+    )
+    .optional()
 })
 
 const addPaymentSchema = z.object({
