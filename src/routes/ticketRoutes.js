@@ -23,8 +23,8 @@ const buildUrl = (req, relativePath) => {
 }
 
 const allowedOrigins = [
-  process.env.FRONTEND_URL || "http://localhost:3000",
-  "http://localhost:3000",
+  process.env.FRONTEND_URL || "http://localhost:3002",
+  "http://localhost:3002",
   "http://localhost:3001"
 ]
 
@@ -59,9 +59,16 @@ router.get("/", verifyToken, checkPermission("tickets.view"), async (req, res) =
     const offset = (page - 1) * pageSize
     const limit = pageSize
 
+    // ✅ MODIFICATION ICI - Inclure toutes les infos de la réservation
     const includeReservation = {
       association: "reservation",
-      attributes: ["id", "payeur_name", "payeur_phone", "pack_name_snapshot"],
+      attributes: [
+        "id", 
+        "payeur_name", 
+        "payeur_phone", 
+        "payeur_email",  // ✅ Ajouté
+        "pack_name_snapshot"
+      ],
     }
     if (packId) {
       includeReservation.where = { pack_id: packId }
@@ -100,6 +107,14 @@ router.get("/", verifyToken, checkPermission("tickets.view"), async (req, res) =
           pdf_url: buildUrl(req, ticket.pdf_url),
           generated_at: ticket.generated_at,
           created_at: ticket.createdAt,
+          // ✅ MODIFICATION ICI - Inclure l'objet reservation complet
+          reservation: ticket.reservation ? {
+            id: ticket.reservation.id,
+            payeur_name: ticket.reservation.payeur_name,
+            payeur_phone: ticket.reservation.payeur_phone,
+            payeur_email: ticket.reservation.payeur_email,
+            pack_name_snapshot: ticket.reservation.pack_name_snapshot,
+          } : null
         }
       }),
     )
@@ -122,7 +137,6 @@ router.get("/", verifyToken, checkPermission("tickets.view"), async (req, res) =
     return res.status(500).json({ status: 500, message: "Failed to fetch tickets" })
   }
 })
-
 // ============================================
 // ENDPOINTS - Génération de token temporaire pour preview
 // ============================================
