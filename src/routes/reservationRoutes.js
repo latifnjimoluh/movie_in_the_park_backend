@@ -24,10 +24,7 @@ router.get("/", verifyToken, checkPermission("reservations.view"), async (req, r
     const { Op } = require("sequelize")
     where = {
       ...where,
-      [Op.or]: [
-        { payeur_name: { [Op.iLike]: `%${q}%` } },
-        { payeur_phone: { [Op.iLike]: `%${q}%` } }
-      ]
+      [Op.or]: [{ payeur_name: { [Op.iLike]: `%${q}%` } }, { payeur_phone: { [Op.iLike]: `%${q}%` } }],
     }
   }
 
@@ -36,11 +33,11 @@ router.get("/", verifyToken, checkPermission("reservations.view"), async (req, r
     include: [
       { association: "participants" },
       { association: "payments" },
-      { association: "pack", attributes: ["name"] }
+      { association: "pack", attributes: ["name"] },
     ],
     offset: (page - 1) * pageSize,
     limit: Number.parseInt(pageSize),
-    order: [["createdAt", "DESC"]]
+    order: [["createdAt", "DESC"]],
   })
 
   res.json({
@@ -52,9 +49,9 @@ router.get("/", verifyToken, checkPermission("reservations.view"), async (req, r
         total: count,
         page: Number.parseInt(page),
         pageSize: Number.parseInt(pageSize),
-        totalPages: Math.ceil(count / pageSize)
-      }
-    }
+        totalPages: Math.ceil(count / pageSize),
+      },
+    },
   })
 })
 
@@ -65,14 +62,7 @@ router.post("/", validate(createReservationSchema), async (req, res) => {
   const t = await sequelize.transaction()
 
   try {
-    const {
-      payeur_name,
-      payeur_phone,
-      payeur_email,
-      pack_id,
-      quantity,
-      participants
-    } = req.validatedData
+    const { payeur_name, payeur_phone, payeur_email, pack_id, quantity, participants } = req.validatedData
 
     const pack = await Pack.findByPk(pack_id, { transaction: t })
 
@@ -85,7 +75,7 @@ router.post("/", validate(createReservationSchema), async (req, res) => {
       await t.rollback()
       return res.status(400).json({
         status: 400,
-        message: "Pack is no longer available"
+        message: "Pack is no longer available",
       })
     }
 
@@ -102,9 +92,9 @@ router.post("/", validate(createReservationSchema), async (req, res) => {
         unit_price: pack.price,
         quantity,
         total_price,
-        status: "pending"
+        status: "pending",
       },
-      { transaction: t }
+      { transaction: t },
     )
 
     // ---------- CREATE PARTICIPANTS ----------
@@ -115,9 +105,9 @@ router.post("/", validate(createReservationSchema), async (req, res) => {
             reservation_id: reservation.id,
             name: p.name,
             email: p.email || null,
-            phone: p.phone || null
+            phone: p.phone || null,
           },
-          { transaction: t }
+          { transaction: t },
         )
       }
     }
@@ -125,7 +115,7 @@ router.post("/", validate(createReservationSchema), async (req, res) => {
     // Reload full object with participants
     const fullReservation = await Reservation.findByPk(reservation.id, {
       include: [{ association: "participants" }],
-      transaction: t
+      transaction: t,
     })
 
     await t.commit()
@@ -146,14 +136,13 @@ router.post("/", validate(createReservationSchema), async (req, res) => {
         // ➤ SEND EMAIL TO PARTICIPANTS WITH EMAIL
         if (participants && participants.length > 0) {
           const participantsWithEmail = participants.filter(
-            p => p.email && typeof p.email === "string" && p.email.trim() !== ""
+            (p) => p.email && typeof p.email === "string" && p.email.trim() !== "",
           )
 
           for (const participant of participantsWithEmail) {
             await sendParticipantEmail(participant, fullReservation, pack)
           }
         }
-
       } catch (emailErr) {
         logger.warn("Async email sending failed:", emailErr.message)
       }
@@ -166,20 +155,18 @@ router.post("/", validate(createReservationSchema), async (req, res) => {
     return res.status(201).json({
       status: 201,
       message: "Reservation created",
-      data: { reservation: fullReservation }
+      data: { reservation: fullReservation },
     })
-
   } catch (error) {
     await t.rollback()
     logger.error(`Error creating reservation: ${error.message}`)
 
     return res.status(500).json({
       status: 500,
-      message: "Error creating reservation"
+      message: "Error creating reservation",
     })
   }
 })
-
 
 /* ============================================================
    📌 GET ONE RESERVATION
@@ -188,23 +175,23 @@ router.get("/:id", verifyToken, checkPermission("reservations.view"), async (req
   const reservation = await Reservation.findByPk(req.params.id, {
     include: [
       { association: "participants" },
-      { association: "payments", include: [{ association: "creator", attributes: ["name"] }] },
+      { association: "payments", include: [{ association: "creator", attributes: ["name", "email"] }] },
       { association: "pack" },
-      { association: "actions" }
-    ]
+      { association: "actions" },
+    ],
   })
 
   if (!reservation) {
     return res.status(404).json({
       status: 404,
-      message: "Reservation not found"
+      message: "Reservation not found",
     })
   }
 
   res.json({
     status: 200,
     message: "Reservation retrieved",
-    data: { reservation }
+    data: { reservation },
   })
 })
 
@@ -220,26 +207,21 @@ router.post(
     const { amount, method, comment } = req.body
 
     try {
-      const result = await addPayment(
-        req.params.id,
-        { amount, method, comment },
-        req.user.id,
-        req.file
-      )
+      const result = await addPayment(req.params.id, { amount, method, comment }, req.user.id, req.file)
 
       res.json({
         status: 200,
         message: "Payment added",
-        data: result
+        data: result,
       })
     } catch (err) {
       const statusCode = err.status || 500
       res.status(statusCode).json({
         status: statusCode,
-        message: err.message
+        message: err.message,
       })
     }
-  }
+  },
 )
 
 module.exports = router

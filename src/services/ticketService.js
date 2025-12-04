@@ -11,10 +11,10 @@ const UPLOADS_DIR = process.env.UPLOAD_DIR || path.join(__dirname, "../../upload
 
 // Templates
 const TICKET_TEMPLATES = {
-  "VIP Soolouf": "/images/vip.jpg",
-  "Simple Soolouf": "/images/simple.jpg",
-  "Famille Soolouf": "/images/famille.jpg",
-  "Couple Soolouf": "/images/couple.jpg",
+  "VIP Soolouf": "/images/vip.png",
+  "Simple Soolouf": "/images/simple.png",
+  "Famille Soolouf": "/images/famille.png",
+  "Couple Soolouf": "/images/couple.png",
 }
 
 // QR positions (identiques pour tous les modèles)
