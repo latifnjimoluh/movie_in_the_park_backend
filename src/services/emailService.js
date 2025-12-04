@@ -7,7 +7,7 @@ const { Readable } = require("stream")
 const fs = require("fs")
 
 // Configuration du provider d'email
-const EMAIL_PROVIDER = process.env.EMAIL_PROVIDER || "sendgrid" // 'gmail' ou 'sendgrid'
+const EMAIL_PROVIDER = process.env.EMAIL_PROVIDER || "gmail" // 'gmail' ou 'sendgrid'
 
 // Configuration de nodemailer pour Gmail
 let transporter = null
