@@ -6,8 +6,14 @@ const { createTicket, generateQRDataUrl } = require("../services/ticketService")
 const logger = require("../config/logger")
 const path = require("path")
 const fs = require("fs")
+const jwt = require("jsonwebtoken")
 
 const router = express.Router()
+
+
+// ============================================
+// UTILITAIRES
+// ============================================
 
 const buildUrl = (req, relativePath) => {
   if (!relativePath) return null
@@ -15,11 +21,29 @@ const buildUrl = (req, relativePath) => {
   const base = process.env.APP_URL || `${req.protocol}://${req.get("host")}`
   return `${base}${relativePath}`
 }
-// ---------------- GET ALL TICKETS ----------------
-// Robust ticket list endpoint
+
+const allowedOrigins = [
+  process.env.FRONTEND_URL || "http://localhost:3000",
+  "http://localhost:3000",
+  "http://localhost:3001"
+]
+
+const setCorsHeaders = (res, origin) => {
+  if (origin && allowedOrigins.includes(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin)
+    res.setHeader("Access-Control-Allow-Credentials", "true")
+    res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS, POST")
+    res.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type")
+    res.setHeader("Access-Control-Expose-Headers", "Content-Disposition, Content-Type, Content-Length")
+  }
+}
+
+// ============================================
+// ENDPOINTS - Liste des tickets
+// ============================================
+
 router.get("/", verifyToken, checkPermission("tickets.view"), async (req, res) => {
   try {
-    // Parse query params safely
     const page = Math.max(1, Number.parseInt(req.query.page || "1", 10) || 1)
     const pageSize = Math.max(1, Number.parseInt(req.query.pageSize || "20", 10) || 20)
     const { q, status, packId, reservationId } = req.query
@@ -32,11 +56,9 @@ router.get("/", verifyToken, checkPermission("tickets.view"), async (req, res) =
       where.ticket_number = { [Op.iLike]: `%${q}%` }
     }
 
-    // Use safe offset/limit and a model-safe order field (use 'createdAt' or the correct column)
     const offset = (page - 1) * pageSize
     const limit = pageSize
 
-    // Prefer explicit attributes for associations to avoid ambiguous SQL
     const includeReservation = {
       association: "reservation",
       attributes: ["id", "payeur_name", "payeur_phone", "pack_name_snapshot"],
@@ -45,22 +67,19 @@ router.get("/", verifyToken, checkPermission("tickets.view"), async (req, res) =
       includeReservation.where = { pack_id: packId }
     }
 
-    // Run DB query
     const { count, rows } = await Ticket.findAndCountAll({
       where,
       include: [includeReservation],
       offset,
       limit,
-      order: [["createdAt", "DESC"]], // <-- adjust to your model column if needed
+      order: [["createdAt", "DESC"]],
     })
 
-    // Generate QR data urls (safe) and build absolute urls
     const ticketsWithQR = await Promise.all(
       rows.map(async (ticket) => {
         let qr_data_url = null
         try {
           if (ticket.qr_payload) {
-            // ticket.qr_payload could be stringified JSON or an object — handle both
             let payload = ticket.qr_payload
             if (typeof payload === "string") {
               payload = JSON.parse(payload)
@@ -99,14 +118,326 @@ router.get("/", verifyToken, checkPermission("tickets.view"), async (req, res) =
       },
     })
   } catch (err) {
-    // Log full error for debugging
     logger.error("Error fetching tickets:", err)
-    // Return minimal safe error to client
     return res.status(500).json({ status: 500, message: "Failed to fetch tickets" })
   }
 })
 
-// ---------------- GENERATE TICKET ----------------
+// ============================================
+// ENDPOINTS - Génération de token temporaire pour preview
+// ============================================
+
+router.options("/:id/preview-token", (req, res) => {
+  const origin = req.headers.origin
+  setCorsHeaders(res, origin)
+  res.sendStatus(204)
+})
+
+router.post("/:id/preview-token", verifyToken, checkPermission("tickets.view"), async (req, res) => {
+  try {
+    const { id } = req.params
+    
+    console.log("[Preview Token] Generating token for ticket:", id)
+    
+    // Vérifier que le ticket existe
+    const ticket = await Ticket.findByPk(id)
+    
+    if (!ticket) {
+      return res.status(404).json({
+        status: 404,
+        message: "Ticket not found",
+      })
+    }
+    
+    // Générer un token temporaire valable 5 minutes
+    const previewToken = jwt.sign(
+      { 
+        ticketId: id, 
+        userId: req.user.id, 
+        type: 'preview' 
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: '5m' }
+    )
+    
+    console.log("[Preview Token] Token generated successfully")
+    
+    res.json({
+      status: 200,
+      message: "Preview token generated",
+      data: { previewToken }
+    })
+  } catch (err) {
+    console.error("[Preview Token] Error:", err)
+    logger.error("Error generating preview token:", err)
+    res.status(500).json({ 
+      status: 500, 
+      message: "Failed to generate preview token" 
+    })
+  }
+})
+
+// ============================================
+// ENDPOINTS - Prévisualisation (inline, pas de téléchargement)
+// ============================================
+
+router.options("/:id/preview", (req, res) => {
+  const origin = req.headers.origin
+  setCorsHeaders(res, origin)
+  res.sendStatus(204)
+})
+
+router.get("/:id/preview", async (req, res) => {
+  try {
+    const { id } = req.params
+    const { token } = req.query
+    
+    console.log("[Preview] Preview endpoint called - ticket id:", id)
+
+    // CORS Headers
+    const origin = req.headers.origin
+    setCorsHeaders(res, origin)
+
+    // ✅ Vérifier le token (depuis query string OU header)
+    let authToken = token || req.headers.authorization?.replace("Bearer ", "")
+    
+    if (!authToken) {
+      console.log("[Preview] No token provided")
+      return res.status(401).json({
+        status: 401,
+        message: "Token manquant",
+      })
+    }
+
+    // ✅ Valider le token
+    try {
+      const decoded = jwt.verify(authToken, process.env.JWT_SECRET)
+      
+      // Si c'est un token de preview, vérifier qu'il correspond au ticket
+      if (decoded.type === 'preview' && decoded.ticketId !== id) {
+        console.log("[Preview] Token ticket ID mismatch")
+        return res.status(403).json({
+          status: 403,
+          message: "Token invalide pour ce ticket",
+        })
+      }
+      
+      console.log("[Preview] Token valid for user:", decoded.userId || decoded.id)
+    } catch (err) {
+      console.error("[Preview] Token validation failed:", err.message)
+      return res.status(401).json({
+        status: 401,
+        message: "Token invalide ou expiré",
+      })
+    }
+
+    const ticket = await Ticket.findByPk(id)
+    
+    if (!ticket || !ticket.pdf_url) {
+      return res.status(404).json({
+        status: 404,
+        message: "Ticket PDF not found",
+      })
+    }
+
+    const pdfPath = path.join(process.cwd(), ticket.pdf_url.replace("/uploads/", "uploads/"))
+    
+    if (!fs.existsSync(pdfPath)) {
+      return res.status(404).json({
+        status: 404,
+        message: "PDF file not found on server",
+      })
+    }
+
+    const stats = fs.statSync(pdfPath)
+    console.log("[Preview] PDF file size:", stats.size, "bytes")
+
+    // ✅ inline au lieu de attachment = pas de téléchargement forcé
+    res.setHeader("Content-Type", "application/pdf")
+    res.setHeader("Content-Disposition", "inline")
+    res.setHeader("Content-Length", stats.size)
+    res.setHeader("Cache-Control", "private, max-age=3600")
+
+    console.log("[Preview] Streaming PDF for preview")
+
+    const stream = fs.createReadStream(pdfPath)
+    stream.pipe(res)
+
+    stream.on("error", (err) => {
+      console.error("[Preview] Stream error:", err)
+      if (!res.headersSent) {
+        res.status(500).json({ status: 500, message: "Error loading PDF preview" })
+      }
+    })
+  } catch (err) {
+    console.error("[Preview] Error:", err)
+    logger.error("Error loading PDF preview:", err)
+    
+    const origin = req.headers.origin
+    setCorsHeaders(res, origin)
+    
+    res.status(500).json({
+      status: 500,
+      message: "Failed to load PDF preview",
+    })
+  }
+})
+
+// ============================================
+// ENDPOINTS - Téléchargement (attachment, force download)
+// ============================================
+
+router.options("/:id/download", (req, res) => {
+  const origin = req.headers.origin
+  setCorsHeaders(res, origin)
+  res.sendStatus(204)
+})
+
+router.get("/:id/download", verifyToken, checkPermission("tickets.view"), async (req, res) => {
+  try {
+    const { id } = req.params
+    console.log("[Download] Download endpoint called - ticket id:", id)
+
+    // CORS Headers en premier
+    const origin = req.headers.origin
+    setCorsHeaders(res, origin)
+
+    const ticket = await Ticket.findByPk(id)
+    console.log("[Download] Ticket found:", ticket ? "yes" : "no")
+
+    if (!ticket) {
+      console.log("[Download] Ticket not found, returning 404")
+      return res.status(404).json({
+        status: 404,
+        message: "Ticket not found",
+      })
+    }
+
+    console.log("[Download] Ticket pdf_url:", ticket.pdf_url)
+
+    if (!ticket.pdf_url) {
+      console.log("[Download] No pdf_url on ticket")
+      return res.status(404).json({
+        status: 404,
+        message: "PDF URL not found on ticket",
+      })
+    }
+
+    const pdfPath = path.join(process.cwd(), ticket.pdf_url.replace("/uploads/", "uploads/"))
+    console.log("[Download] PDF path from DB:", ticket.pdf_url)
+    console.log("[Download] Resolved pdfPath:", pdfPath)
+
+    if (!fs.existsSync(pdfPath)) {
+      console.log("[Download] PDF file does not exist at:", pdfPath)
+      return res.status(404).json({
+        status: 404,
+        message: "PDF file not found on server",
+      })
+    }
+
+    console.log("[Download] PDF file exists")
+
+    const stats = fs.statSync(pdfPath)
+    console.log("[Download] File size:", stats.size, "bytes")
+
+    // ✅ attachment = force le téléchargement
+    res.setHeader("Content-Type", "application/pdf")
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename*=UTF-8''${encodeURIComponent(`ticket-${ticket.ticket_number}.pdf`)}`,
+    )
+    res.setHeader("Content-Length", stats.size)
+    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate")
+    res.setHeader("Pragma", "no-cache")
+    res.setHeader("Expires", "0")
+
+    console.log("[Download] All headers set, starting stream")
+
+    const stream = fs.createReadStream(pdfPath)
+    stream.pipe(res)
+
+    stream.on("error", (err) => {
+      console.error("[Download] Stream error:", err)
+      if (!res.headersSent) {
+        res.status(500).json({ status: 500, message: "Error downloading PDF" })
+      }
+    })
+
+    console.log("[Download] Stream piped")
+  } catch (err) {
+    console.error("[Download] Try/catch error:", err)
+    logger.error("Error downloading ticket PDF:", err)
+    
+    const origin = req.headers.origin
+    setCorsHeaders(res, origin)
+    
+    res.status(500).json({
+      status: 500,
+      message: "Failed to download ticket",
+    })
+  }
+})
+
+// ============================================
+// ENDPOINTS - Téléchargement QR image
+// ============================================
+
+router.get("/:id/download-image", verifyToken, checkPermission("tickets.view"), async (req, res) => {
+  try {
+    const { id } = req.params
+
+    const ticket = await Ticket.findByPk(id)
+    if (!ticket) {
+      return res.status(404).json({
+        status: 404,
+        message: "Ticket not found",
+      })
+    }
+
+    const qrPath = path.join(process.cwd(), ticket.qr_image_url.replace("/uploads/", "uploads/"))
+
+    if (!fs.existsSync(qrPath)) {
+      return res.status(404).json({
+        status: 404,
+        message: "QR image not found",
+      })
+    }
+
+    res.setHeader("Content-Type", "image/png")
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename*=UTF-8''${encodeURIComponent(`qr-${ticket.ticket_number}.png`)}`,
+    )
+    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate")
+    res.setHeader("Pragma", "no-cache")
+    res.setHeader("Expires", "0")
+
+    res.setHeader("Access-Control-Allow-Origin", process.env.FRONTEND_URL || "http://localhost:3000")
+    res.setHeader("Access-Control-Allow-Credentials", "true")
+    res.setHeader("Access-Control-Expose-Headers", "Content-Disposition, Content-Type")
+
+    const imageStream = fs.createReadStream(qrPath)
+    imageStream.pipe(res)
+
+    imageStream.on("error", (err) => {
+      logger.error("Error streaming image:", err)
+      if (!res.headersSent) {
+        res.status(500).json({ status: 500, message: "Error downloading image" })
+      }
+    })
+  } catch (err) {
+    logger.error("Error downloading ticket image:", err)
+    res.status(500).json({
+      status: 500,
+      message: "Failed to download image",
+    })
+  }
+})
+
+// ============================================
+// ENDPOINTS - Génération de ticket
+// ============================================
+
 router.post("/:reservationId/generate", verifyToken, checkPermission("tickets.generate"), async (req, res) => {
   try {
     const { reservationId } = req.params
@@ -118,13 +449,12 @@ router.post("/:reservationId/generate", verifyToken, checkPermission("tickets.ge
       })
     }
 
-    // Check if ticket already exists
+    // Vérifier si le ticket existe déjà
     const existingTicket = await Ticket.findOne({
       where: { reservation_id: reservationId },
     })
 
     if (existingTicket) {
-      // Return existing ticket with QR data
       let qr_data_url = null
       try {
         if (existingTicket.qr_payload) {
@@ -153,10 +483,9 @@ router.post("/:reservationId/generate", verifyToken, checkPermission("tickets.ge
       })
     }
 
-    // Generate new ticket
+    // Générer un nouveau ticket
     const result = await createTicket(reservationId, req.user.id)
 
-    // Ensure returned URLs are absolute
     if (result && result.ticket) {
       result.ticket.qr_image_url = buildUrl(req, result.ticket.qr_image_url)
       result.ticket.pdf_url = buildUrl(req, result.ticket.pdf_url)
@@ -180,7 +509,10 @@ router.post("/:reservationId/generate", verifyToken, checkPermission("tickets.ge
   }
 })
 
-// ---------------- GET TICKET BY ID ----------------
+// ============================================
+// ENDPOINTS - Récupération de tickets
+// ============================================
+
 router.get("/:id", verifyToken, checkPermission("tickets.view"), async (req, res) => {
   try {
     const { id } = req.params
@@ -198,7 +530,7 @@ router.get("/:id", verifyToken, checkPermission("tickets.view"), async (req, res
         {
           model: User,
           as: "generator",
-          attributes: ["id", "name", "email"], // Use 'name' instead of 'username'
+          attributes: ["id", "name", "email"],
         },
       ],
     })
@@ -247,66 +579,6 @@ router.get("/:id", verifyToken, checkPermission("tickets.view"), async (req, res
   }
 })
 
-// ---------------- REGENERATE TICKET ----------------
-router.post("/:id/regenerate", verifyToken, checkPermission("tickets.generate"), async (req, res) => {
-  try {
-    const { id } = req.params
-
-    const ticket = await Ticket.findByPk(id, {
-      include: [
-        {
-          association: "reservation",
-          attributes: ["id", "total_paid", "total_price", "status"],
-        },
-      ],
-    })
-
-    if (!ticket) {
-      return res.status(404).json({
-        status: 404,
-        message: "Ticket not found",
-      })
-    }
-
-    if (ticket.reservation.total_paid < ticket.reservation.total_price) {
-      return res.status(409).json({
-        status: 409,
-        message: "Reservation is not fully paid",
-      })
-    }
-
-    // Generate new QR and PDF
-    let qr_data_url = null
-    try {
-      if (ticket.qr_payload) {
-        const payload = JSON.parse(ticket.qr_payload)
-        qr_data_url = await generateQRDataUrl(payload)
-      }
-    } catch (err) {
-      logger.warn(`Failed to generate QR for regenerate:`, err)
-    }
-
-    res.json({
-      status: 200,
-      message: "Ticket regenerated successfully",
-      data: {
-        id: ticket.id,
-        ticket_number: ticket.ticket_number,
-        status: ticket.status,
-        qr_data_url,
-        pdf_url: buildUrl(req, ticket.pdf_url),
-      },
-    })
-  } catch (err) {
-    logger.error("Error regenerating ticket:", err)
-    res.status(500).json({
-      status: 500,
-      message: "Failed to regenerate ticket",
-    })
-  }
-})
-
-// ---------------- GET TICKET BY RESERVATION ID ----------------
 router.get("/by-reservation/:reservationId", verifyToken, checkPermission("tickets.view"), async (req, res) => {
   try {
     const { reservationId } = req.params
@@ -325,7 +597,7 @@ router.get("/by-reservation/:reservationId", verifyToken, checkPermission("ticke
         {
           model: User,
           as: "generator",
-          attributes: ["id", "name", "email"], // Use 'name' instead of 'username'
+          attributes: ["id", "name", "email"],
         },
       ],
     })
@@ -374,77 +646,23 @@ router.get("/by-reservation/:reservationId", verifyToken, checkPermission("ticke
   }
 })
 
-// ---------------- STREAMING PDF DOWNLOAD ENDPOINT ----------------
-// ---------------- STREAMING PDF DOWNLOAD ENDPOINT ----------------
-// ---------------- STREAMING PDF DOWNLOAD ENDPOINT ----------------
-router.get("/:id/download", verifyToken, checkPermission("tickets.view"), async (req, res) => {
-  try {
-    const { id } = req.params;
+// ============================================
+// ENDPOINTS - Régénération de ticket
+// ============================================
 
-    const ticket = await Ticket.findByPk(id);
-    if (!ticket || !ticket.pdf_url) {
-      return res.status(404).json({
-        status: 404,
-        message: "Ticket or PDF not found",
-      });
-    }
-
-    // ⭐ Correction universelle : local + Render
-    const pdfPath = path.join(
-      process.cwd(),
-      ticket.pdf_url.replace("/uploads/", "uploads/")
-    );
-
-    console.log("📌 PDF PATH USED:", pdfPath);
-
-    if (!fs.existsSync(pdfPath)) {
-      console.log("❌ PDF NOT FOUND AT:", pdfPath);
-      return res.status(404).json({
-        status: 404,
-        message: "PDF file not found on server",
-      });
-    }
-
-    const stats = fs.statSync(pdfPath);
-
-    res.setHeader("Content-Type", "application/pdf");
-    res.setHeader(
-      "Content-Disposition",
-      `attachment; filename="ticket-${ticket.ticket_number}.pdf"`
-    );
-    res.setHeader("Content-Length", stats.size);
-    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-    res.setHeader("Pragma", "no-cache");
-    res.setHeader("Expires", "0");
-
-    const stream = fs.createReadStream(pdfPath);
-    stream.pipe(res);
-
-    stream.on("error", (err) => {
-      logger.error("Error streaming PDF:", err);
-      if (!res.headersSent) {
-        res.status(500).json({ status: 500, message: "Error downloading PDF" });
-      }
-    });
-  } catch (err) {
-    logger.error("Error downloading ticket:", err);
-    res.status(500).json({
-      status: 500,
-      message: "Failed to download ticket",
-    });
-  }
-});
-
-
-
-
-
-// ---------------- IMAGE CONVERSION ENDPOINT FOR ANDROID GALLERY SAVE ----------------
-router.get("/:id/download-image", verifyToken, checkPermission("tickets.view"), async (req, res) => {
+router.post("/:id/regenerate", verifyToken, checkPermission("tickets.generate"), async (req, res) => {
   try {
     const { id } = req.params
 
-    const ticket = await Ticket.findByPk(id)
+    const ticket = await Ticket.findByPk(id, {
+      include: [
+        {
+          association: "reservation",
+          attributes: ["id", "total_paid", "total_price", "status"],
+        },
+      ],
+    })
+
     if (!ticket) {
       return res.status(404).json({
         status: 404,
@@ -452,33 +670,39 @@ router.get("/:id/download-image", verifyToken, checkPermission("tickets.view"), 
       })
     }
 
-    const qrPath = path.join(process.cwd(), "backend", ticket.qr_image_url)
-
-    if (!fs.existsSync(qrPath)) {
-      return res.status(404).json({
-        status: 404,
-        message: "QR image not found",
+    if (ticket.reservation.total_paid < ticket.reservation.total_price) {
+      return res.status(409).json({
+        status: 409,
+        message: "Reservation is not fully paid",
       })
     }
 
-    res.setHeader("Content-Type", "image/png")
-    res.setHeader("Content-Disposition", `attachment; filename="qr-${ticket.ticket_number}.png"`)
-    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate")
-
-    const imageStream = fs.createReadStream(qrPath)
-    imageStream.pipe(res)
-
-    imageStream.on("error", (err) => {
-      logger.error("Error streaming image:", err)
-      if (!res.headersSent) {
-        res.status(500).json({ status: 500, message: "Error downloading image" })
+    let qr_data_url = null
+    try {
+      if (ticket.qr_payload) {
+        const payload = JSON.parse(ticket.qr_payload)
+        qr_data_url = await generateQRDataUrl(payload)
       }
+    } catch (err) {
+      logger.warn(`Failed to generate QR for regenerate:`, err)
+    }
+
+    res.json({
+      status: 200,
+      message: "Ticket regenerated successfully",
+      data: {
+        id: ticket.id,
+        ticket_number: ticket.ticket_number,
+        status: ticket.status,
+        qr_data_url,
+        pdf_url: buildUrl(req, ticket.pdf_url),
+      },
     })
   } catch (err) {
-    logger.error("Error downloading ticket image:", err)
+    logger.error("Error regenerating ticket:", err)
     res.status(500).json({
       status: 500,
-      message: "Failed to download image",
+      message: "Failed to regenerate ticket",
     })
   }
 })

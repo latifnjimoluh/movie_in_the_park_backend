@@ -27,22 +27,59 @@ const { errorHandler } = require("./middlewares/errorHandler")
 
 const app = express()
 
-app.use(helmet())
-
-app.use(cors({
-  origin: [
-    process.env.FRONTEND_URL || "http://localhost:3000",
-    "http://localhost:3000"
-  ],
-  credentials: true
+// ============================================
+// HELMET - Configuration avec CSP personnalisée
+// ============================================
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: ["'self'"],
+      imgSrc: ["'self'", "data:", "blob:"],
+      connectSrc: ["'self'"],
+      fontSrc: ["'self'"],
+      objectSrc: ["'none'"],
+      mediaSrc: ["'self'"],
+      // ✅ CRITIQUE : Autoriser les iframes depuis localhost
+      frameSrc: ["'self'"],
+      frameAncestors: ["'self'", "http://localhost:3000", "http://localhost:3001"],
+    },
+  },
+  crossOriginEmbedderPolicy: false,
+  crossOriginResourcePolicy: { policy: "cross-origin" }
 }))
 
+// ============================================
+// CORS - Configuration complète
+// ============================================
+app.use(cors({
+  origin: [
+    'http://localhost:3000',
+    'http://localhost:3001',
+    process.env.FRONTEND_URL
+  ].filter(Boolean),
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  exposedHeaders: ['Content-Disposition', 'Content-Type', 'Content-Length']
+}))
+
+// ============================================
+// BODY PARSERS
+// ============================================
 app.use(express.json({ limit: "10mb" }))
 app.use(express.urlencoded({ limit: "10mb", extended: true }))
 
+// ============================================
+// STATIC FILES - Uploads
+// ============================================
 const uploadPath = path.join(process.cwd(), "uploads")
 app.use("/uploads", express.static(uploadPath))
 
+// ============================================
+// API ROUTES
+// ============================================
 app.use("/api/auth", authRoutes)
 app.use("/api/packs", packRoutes)
 app.use("/api/reservations", reservationRoutes)
@@ -51,9 +88,9 @@ app.use("/api/tickets", ticketRoutes)
 app.use("/api/scan", scanRoutes)
 app.use("/api/users", userRoutes)
 
-/* ====================================
-   HEALTH CHECK
-==================================== */
+// ============================================
+// HEALTH CHECK
+// ============================================
 app.get("/api/health", (req, res) => {
   res.json({
     status: "ok",
@@ -61,9 +98,9 @@ app.get("/api/health", (req, res) => {
   })
 })
 
-/* ====================================
-   KEEPALIVE ENDPOINT
-==================================== */
+// ============================================
+// KEEPALIVE ENDPOINT
+// ============================================
 app.get("/api/keepalive", (req, res) => {
   res.json({
     status: "alive",
@@ -71,9 +108,9 @@ app.get("/api/keepalive", (req, res) => {
   })
 })
 
-/* ====================================
-   CRON KEEPALIVE — toutes les 10 minutes
-==================================== */
+// ============================================
+// CRON KEEPALIVE — toutes les 5 minutes
+// ============================================
 cron.schedule("*/5 * * * *", async () => {
   console.log("⏱️ CRON KEEPALIVE lancé :", new Date().toISOString())
 
@@ -97,10 +134,16 @@ cron.schedule("*/5 * * * *", async () => {
   }
 })
 
+// ============================================
+// 404 HANDLER
+// ============================================
 app.use((req, res) => {
   res.status(404).json({ status: 404, message: "Route not found" })
 })
 
+// ============================================
+// ERROR HANDLER
+// ============================================
 app.use(errorHandler)
 
 module.exports = app
