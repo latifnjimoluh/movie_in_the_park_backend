@@ -22,6 +22,27 @@ module.exports = {
       order: [["createdAt", "DESC"]],
     })
 
+    // Audit log pour la lecture de la liste
+    await auditService.log({
+      userId: req.user.id,
+      permission: "reservations.read",
+      entityType: "reservation",
+      entityId: null, // Pas d'ID spécifique pour une liste
+      action: "read",
+      description: `Liste des réservations consultée (${reservations.count} résultats)`,
+      changes: {
+        filters: {
+          status,
+          pack_id,
+          limit: Number.parseInt(limit),
+          offset: Number.parseInt(offset),
+        },
+        results_count: reservations.count,
+      },
+      ipAddress: req.ip,
+      userAgent: req.get("user-agent"),
+    })
+
     res.json({
       status: 200,
       message: "Reservations retrieved",
@@ -42,11 +63,45 @@ module.exports = {
     })
 
     if (!reservation) {
+      // Audit log pour tentative de lecture échouée
+      await auditService.log({
+        userId: req.user.id,
+        permission: "reservations.read",
+        entityType: "reservation",
+        entityId: id,
+        action: "read",
+        description: `Tentative de consultation d'une réservation inexistante`,
+        changes: {
+          reservation_id: id,
+        },
+        status: "failed",
+        ipAddress: req.ip,
+        userAgent: req.get("user-agent"),
+      })
+
       return res.status(404).json({
         status: 404,
         message: "Reservation not found",
       })
     }
+
+    // Audit log pour lecture réussie
+    await auditService.log({
+      userId: req.user.id,
+      permission: "reservations.read",
+      entityType: "reservation",
+      entityId: id,
+      action: "read",
+      description: `Réservation consultée (${reservation.reservation_number})`,
+      changes: {
+        reservation_number: reservation.reservation_number,
+        payeur_name: reservation.payeur_name,
+        status: reservation.status,
+        total_price: reservation.total_price,
+      },
+      ipAddress: req.ip,
+      userAgent: req.get("user-agent"),
+    })
 
     res.json({
       status: 200,
@@ -57,6 +112,10 @@ module.exports = {
 
   async create(req, res) {
     const { payeur_name, payeur_phone, payeur_email, pack_id, quantity, participants } = req.body
+
+    // DEBUG: Vérifier si req.user existe
+    console.log("[DEBUG] req.user:", req.user)
+    console.log("[DEBUG] req.user.id:", req.user?.id)
 
     const pack = await Pack.findByPk(pack_id)
     if (!pack) {
@@ -104,8 +163,11 @@ module.exports = {
         payeur_phone,
         payeur_email,
         pack_id,
+        pack_name: pack.name,
         quantity,
         total_price,
+        status: "pending",
+        participants_count: participants?.length || 0,
       },
       ipAddress: req.ip,
       userAgent: req.get("user-agent"),
@@ -124,6 +186,22 @@ module.exports = {
 
     const reservation = await Reservation.findByPk(id)
     if (!reservation) {
+      // Audit log pour tentative de modification échouée
+      await auditService.log({
+        userId: req.user.id,
+        permission: "reservations.edit",
+        entityType: "reservation",
+        entityId: id,
+        action: "update",
+        description: `Tentative de modification d'une réservation inexistante`,
+        changes: {
+          reservation_id: id,
+        },
+        status: "failed",
+        ipAddress: req.ip,
+        userAgent: req.get("user-agent"),
+      })
+
       return res.status(404).json({
         status: 404,
         message: "Reservation not found",
@@ -131,6 +209,23 @@ module.exports = {
     }
 
     if (reservation.status === "ticket_generated") {
+      // Audit log pour tentative de modification rejetée
+      await auditService.log({
+        userId: req.user.id,
+        permission: "reservations.edit",
+        entityType: "reservation",
+        entityId: id,
+        action: "update",
+        description: `Tentative de modification d'une réservation avec ticket généré (refusée)`,
+        changes: {
+          reservation_number: reservation.reservation_number,
+          status: reservation.status,
+        },
+        status: "failed",
+        ipAddress: req.ip,
+        userAgent: req.get("user-agent"),
+      })
+
       return res.status(409).json({
         status: 409,
         message: "Cannot update reservation after ticket generation",
@@ -160,7 +255,7 @@ module.exports = {
         entityType: "reservation",
         entityId: id,
         action: "update",
-        description: `Réservation modifiée`,
+        description: `Réservation modifiée (${reservation.reservation_number})`,
         changes,
         ipAddress: req.ip,
         userAgent: req.get("user-agent"),
@@ -179,6 +274,22 @@ module.exports = {
 
     const reservation = await Reservation.findByPk(id)
     if (!reservation) {
+      // Audit log pour tentative d'annulation échouée
+      await auditService.log({
+        userId: req.user.id,
+        permission: "reservations.delete.soft",
+        entityType: "reservation",
+        entityId: id,
+        action: "delete",
+        description: `Tentative d'annulation d'une réservation inexistante`,
+        changes: {
+          reservation_id: id,
+        },
+        status: "failed",
+        ipAddress: req.ip,
+        userAgent: req.get("user-agent"),
+      })
+
       return res.status(404).json({
         status: 404,
         message: "Reservation not found",
@@ -186,11 +297,30 @@ module.exports = {
     }
 
     if (reservation.status === "ticket_generated") {
+      // Audit log pour tentative d'annulation rejetée
+      await auditService.log({
+        userId: req.user.id,
+        permission: "reservations.delete.soft",
+        entityType: "reservation",
+        entityId: id,
+        action: "delete",
+        description: `Tentative d'annulation d'une réservation avec ticket généré (refusée)`,
+        changes: {
+          reservation_number: reservation.reservation_number,
+          status: reservation.status,
+        },
+        status: "failed",
+        ipAddress: req.ip,
+        userAgent: req.get("user-agent"),
+      })
+
       return res.status(409).json({
         status: 409,
         message: "Cannot cancel reservation after ticket generation",
       })
     }
+
+    const previousStatus = reservation.status
 
     await reservation.update({ status: "cancelled" })
 
@@ -201,8 +331,16 @@ module.exports = {
       permission: "reservations.delete.soft",
       entityType: "reservation",
       entityId: id,
-      action: "cancel",
-      description: `Réservation annulée`,
+      action: "delete",
+      description: `Réservation annulée (${reservation.reservation_number})`,
+      changes: {
+        reservation_number: reservation.reservation_number,
+        payeur_name: reservation.payeur_name,
+        previous_status: previousStatus,
+        new_status: "cancelled",
+        total_price: reservation.total_price,
+        total_paid: reservation.total_paid,
+      },
       ipAddress: req.ip,
       userAgent: req.get("user-agent"),
     })
@@ -227,6 +365,22 @@ module.exports = {
     })
 
     if (!reservation) {
+      // Audit log pour tentative de suppression échouée
+      await auditService.log({
+        userId: req.user.id,
+        permission: "reservations.delete.permanent",
+        entityType: "reservation",
+        entityId: id,
+        action: "delete",
+        description: `Tentative de suppression d'une réservation inexistante`,
+        changes: {
+          reservation_id: id,
+        },
+        status: "failed",
+        ipAddress: req.ip,
+        userAgent: req.get("user-agent"),
+      })
+
       return res.status(404).json({
         status: 404,
         message: "Reservation not found",
@@ -234,6 +388,23 @@ module.exports = {
     }
 
     if (reservation.status === "ticket_generated") {
+      // Audit log pour tentative de suppression rejetée
+      await auditService.log({
+        userId: req.user.id,
+        permission: "reservations.delete.permanent",
+        entityType: "reservation",
+        entityId: id,
+        action: "delete",
+        description: `Tentative de suppression d'une réservation avec ticket généré (refusée)`,
+        changes: {
+          reservation_number: reservation.reservation_number,
+          status: reservation.status,
+        },
+        status: "failed",
+        ipAddress: req.ip,
+        userAgent: req.get("user-agent"),
+      })
+
       return res.status(409).json({
         status: 409,
         message: "Cannot permanently delete reservation after ticket generation",
@@ -241,6 +412,15 @@ module.exports = {
     }
 
     try {
+      const deletedReservationData = {
+        reservation_number: reservation.reservation_number,
+        payeur_name: reservation.payeur_name,
+        payeur_email: reservation.payeur_email,
+        total_price: reservation.total_price,
+        total_paid: reservation.total_paid,
+        status: reservation.status,
+      }
+
       if (reservation.actionLogs && reservation.actionLogs.length > 0) {
         await ActionLog.destroy({
           where: { reservation_id: id },
@@ -274,10 +454,11 @@ module.exports = {
         permission: "reservations.delete.permanent",
         entityType: "reservation",
         entityId: id,
-        action: "permanently_delete",
-        description: `Réservation supprimée définitivement`,
+        action: "delete",
+        description: `Réservation supprimée définitivement (${deletedReservationData.reservation_number})`,
         changes: {
-          deleted_count: {
+          ...deletedReservationData,
+          deleted_related_data: {
             actionLogs: reservation.actionLogs?.length || 0,
             tickets: reservation.tickets?.length || 0,
             participants: reservation.participants?.length || 0,
@@ -294,6 +475,22 @@ module.exports = {
       })
     } catch (error) {
       logger.error(`Error permanently deleting reservation ${id}:`, error.message)
+
+      await auditService.log({
+        userId: req.user.id,
+        permission: "reservations.delete.permanent",
+        entityType: "reservation",
+        entityId: id,
+        action: "delete",
+        description: `Erreur lors de la suppression de la réservation`,
+        changes: {
+          error: error.message,
+        },
+        status: "failed",
+        ipAddress: req.ip,
+        userAgent: req.get("user-agent"),
+      })
+
       res.status(500).json({
         status: 500,
         message: `Erreur lors de la suppression de la réservation: ${error.message || "Une erreur est survenue"}`,

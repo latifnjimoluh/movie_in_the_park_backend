@@ -7,6 +7,7 @@ const logger = require("../config/logger")
 const path = require("path")
 const fs = require("fs")
 const jwt = require("jsonwebtoken")
+const { auditService } = require("../services/auditService")
 
 const router = express.Router()
 
@@ -170,6 +171,21 @@ router.post("/:id/preview-token", verifyToken, checkPermission("tickets.preview"
     )
 
     console.log("[Preview Token] Token generated successfully")
+
+    await auditService
+      .log({
+        userId: req.user.id,
+        action: "ticket.preview_token",
+        resourceType: "ticket",
+        resourceId: id,
+        details: {
+          ticketNumber: ticket.ticket_number,
+        },
+        description: `Token de prévisualisation généré pour le ticket ${ticket.ticket_number}`,
+        ipAddress: req.ip,
+        userAgent: req.get("user-agent"),
+      })
+      .catch((logErr) => logger.error("Failed to log preview token:", logErr))
 
     res.json({
       status: 200,
@@ -496,12 +512,44 @@ router.post("/:reservationId/generate", verifyToken, checkPermission("tickets.ge
       result.ticket.pdf_url = buildUrl(req, result.ticket.pdf_url)
     }
 
+    await auditService.log({
+      userId: req.user.id,
+      action: "ticket.generate",
+      resourceType: "ticket",
+      resourceId: result.ticket.id,
+      details: {
+        reservationId: reservationId,
+        ticketNumber: result.ticket.ticket_number,
+        packName: result.reservation.pack_name,
+      },
+      description: `Ticket ${result.ticket.ticket_number} généré pour la réservation ${reservationId}`,
+      ipAddress: req.ip,
+      userAgent: req.get("user-agent"),
+    })
+
     res.status(201).json({
       status: 201,
       message: "Ticket generated successfully",
       data: result,
     })
   } catch (err) {
+    await auditService
+      .log({
+        userId: req.user.id,
+        action: "ticket.generate",
+        resourceType: "ticket",
+        resourceId: null,
+        details: {
+          reservationId: req.params.reservationId,
+          error: err.message,
+        },
+        description: `Erreur lors de la génération du ticket: ${err.message}`,
+        status: "failed",
+        ipAddress: req.ip,
+        userAgent: req.get("user-agent"),
+      })
+      .catch((logErr) => logger.error("Failed to log ticket error:", logErr))
+
     const status = err.status || 500
     const message = err.message || "Ticket generation failed"
 

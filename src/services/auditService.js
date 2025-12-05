@@ -1,34 +1,57 @@
-const { ActivityLog } = require("../models")
+const { ActivityLog, User } = require("../models")
+const logger = require("../config/logger")
 
 const auditService = {
   /**
    * Enregistrer une activité d'audit
-   * @param {Object} options - Options du log
-   * @param {string} options.userId - ID de l'utilisateur
-   * @param {string} options.permission - Permission utilisée (ex: 'packs.create')
-   * @param {string} options.entityType - Type d'entité ('reservation', 'pack', etc.)
-   * @param {string} options.entityId - ID de l'entité affectée
-   * @param {string} options.action - Action ('create', 'update', 'delete', etc.)
-   * @param {string} options.description - Description lisible
-   * @param {object} options.changes - Détails des changements
-   * @param {string} options.status - Statut ('success', 'failed')
-   * @param {string} options.ipAddress - Adresse IP
-   * @param {string} options.userAgent - User agent du navigateur
    */
   async log({
     userId,
-    permission,
+    permission = null,
     entityType,
-    entityId,
+    entityId = null,
     action,
-    description,
+    description = "",
     changes = {},
     status = "success",
-    ipAddress,
-    userAgent,
+    ipAddress = null,
+    userAgent = null,
   }) {
     try {
-      await ActivityLog.create({
+      /* ============================================================
+         🔍 VALIDATIONS
+      ============================================================= */
+      if (!userId) {
+        logger.error("[AUDIT] userId manquant dans le log d'audit")
+        return null
+      }
+
+      if (!entityType) {
+        logger.error("[AUDIT] entityType manquant dans le log d'audit")
+        return null
+      }
+
+      if (!action) {
+        logger.error("[AUDIT] action manquant dans le log d'audit")
+        return null
+      }
+
+      /* ============================================================
+         📝 LOG AVANT INSERTION
+      ============================================================= */
+      console.log("[AUDIT] ➤ Création log :", {
+        user_id: userId,
+        permission,
+        entity_type: entityType,
+        entity_id: entityId,
+        action,
+        status,
+      })
+
+      /* ============================================================
+         🗂️ INSERTION DANS LA BD
+      ============================================================= */
+      const activityLog = await ActivityLog.create({
         user_id: userId,
         permission,
         entity_type: entityType,
@@ -40,54 +63,80 @@ const auditService = {
         ip_address: ipAddress,
         user_agent: userAgent,
       })
+
+      /* ============================================================
+         ✔️ SUCCÈS
+      ============================================================= */
+      console.log("[AUDIT] ✔ Log enregistré :", activityLog.id)
+
+      logger.info(`[AUDIT] Log créé: ${activityLog.id}`)
+
+      return activityLog
     } catch (err) {
-      console.error("[AUDIT] Erreur lors de l'enregistrement du log:", err.message)
+      /* ============================================================
+         ❌ ERREUR
+      ============================================================= */
+      console.error("[AUDIT] ❌ Erreur lors de l'enregistrement du log")
+      console.error("Message :", err.message)
+      console.error("Stack :", err.stack)
+      console.error("Payload envoyé :", {
+        userId,
+        permission,
+        entityType,
+        entityId,
+        action,
+        status,
+      })
+
+      logger.error("[AUDIT] Erreur lors de l'enregistrement du log", {
+        error: err.message,
+        stack: err.stack,
+        data: {
+          userId,
+          permission,
+          entityType,
+          entityId,
+          action,
+          status,
+        },
+      })
+
+      return null
     }
   },
 
-  /**
-   * Récupérer les logs d'un utilisateur
-   */
+  /* ============================================================
+     🔎 Récupérer les logs d'un utilisateur
+  ============================================================= */
   async getUserLogs(userId, limit = 50, offset = 0) {
     return ActivityLog.findAndCountAll({
       where: { user_id: userId },
-      include: [
-        {
-          model: require("../models").User,
-          as: "user",
-          attributes: ["id", "name", "email", "role"],
-        },
-      ],
+      include: [{ model: User, as: "user", attributes: ["id", "name", "email", "role"] }],
       limit,
       offset,
       order: [["created_at", "DESC"]],
     })
   },
 
-  /**
-   * Récupérer les logs d'une entité
-   */
+  /* ============================================================
+     🔎 Récupérer les logs d'une entité
+  ============================================================= */
   async getEntityLogs(entityType, entityId, limit = 50, offset = 0) {
     return ActivityLog.findAndCountAll({
       where: { entity_type: entityType, entity_id: entityId },
-      include: [
-        {
-          model: require("../models").User,
-          as: "user",
-          attributes: ["id", "name", "email", "role"],
-        },
-      ],
+      include: [{ model: User, as: "user", attributes: ["id", "name", "email", "role"] }],
       limit,
       offset,
       order: [["created_at", "DESC"]],
     })
   },
 
-  /**
-   * Récupérer tous les logs (pour l'audit général)
-   */
+  /* ============================================================
+     🔎 Récupérer tous les logs
+  ============================================================= */
   async getAllLogs(limit = 100, offset = 0, filters = {}) {
     const where = {}
+
     if (filters.userId) where.user_id = filters.userId
     if (filters.permission) where.permission = filters.permission
     if (filters.entityType) where.entity_type = filters.entityType
@@ -96,32 +145,20 @@ const auditService = {
 
     return ActivityLog.findAndCountAll({
       where,
-      include: [
-        {
-          model: require("../models").User,
-          as: "user",
-          attributes: ["id", "name", "email", "role"],
-        },
-      ],
+      include: [{ model: User, as: "user", attributes: ["id", "name", "email", "role"] }],
       limit,
       offset,
       order: [["created_at", "DESC"]],
     })
   },
 
-  /**
-   * Récupérer les logs par permission
-   */
+  /* ============================================================
+     🔎 Logs filtrés par permission
+  ============================================================= */
   async getLogsByPermission(permission, limit = 50, offset = 0) {
     return ActivityLog.findAndCountAll({
       where: { permission },
-      include: [
-        {
-          model: require("../models").User,
-          as: "user",
-          attributes: ["id", "name", "email", "role"],
-        },
-      ],
+      include: [{ model: User, as: "user", attributes: ["id", "name", "email", "role"] }],
       limit,
       offset,
       order: [["created_at", "DESC"]],

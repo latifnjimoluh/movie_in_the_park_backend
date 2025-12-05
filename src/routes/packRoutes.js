@@ -5,9 +5,9 @@ const { checkPermission } = require("../middlewares/permissions")
 
 const router = express.Router()
 
-router.get("/", verifyToken, checkPermission("packs.view"), packController.getAll)
+router.get("/", packController.getAll)
 
-router.get("/:id", verifyToken, checkPermission("packs.view"), async (req, res) => {
+router.get("/:id", async (req, res) => {
   const { Pack } = require("../models")
   const pack = await Pack.findByPk(req.params.id)
 
