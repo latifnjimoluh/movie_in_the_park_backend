@@ -59,6 +59,7 @@ router.post("/register", async (req, res) => {
 })
 
 // ---------------------- LOGIN ----------------------
+// ---------------------- LOGIN ----------------------
 router.post("/login", validate(loginSchema), async (req, res) => {
   const { email, password } = req.validatedData
 
@@ -71,13 +72,20 @@ router.post("/login", validate(loginSchema), async (req, res) => {
     })
   }
 
-  const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, process.env.JWT_SECRET, {
-    expiresIn: process.env.JWT_EXPIRE || "24h",
-  })
+  // ➤ AJOUT ICI : update last_login
+  await user.update({ last_login: new Date() })
 
-  const refreshToken = jwt.sign({ id: user.id }, process.env.JWT_REFRESH_SECRET, {
-    expiresIn: process.env.JWT_REFRESH_EXPIRE || "7d",
-  })
+  const token = jwt.sign(
+    { id: user.id, email: user.email, role: user.role },
+    process.env.JWT_SECRET,
+    { expiresIn: process.env.JWT_EXPIRE || "24h" }
+  )
+
+  const refreshToken = jwt.sign(
+    { id: user.id },
+    process.env.JWT_REFRESH_SECRET,
+    { expiresIn: process.env.JWT_REFRESH_EXPIRE || "7d" }
+  )
 
   res.json({
     status: 200,
@@ -94,6 +102,7 @@ router.post("/login", validate(loginSchema), async (req, res) => {
     },
   })
 })
+
 
 // ---------------------- REFRESH ----------------------
 router.post("/refresh", verifyRefreshToken, async (req, res) => {

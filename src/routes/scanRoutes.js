@@ -9,8 +9,9 @@ const router = express.Router()
 
 /* ===========================================
     🔍 1 — DECODE LE QR CODE (HMAC)
+    Added scan.decode permission
 =========================================== */
-router.post("/decode", async (req, res) => {
+router.post("/decode", verifyToken, checkPermission("scan.decode"), async (req, res) => {
   const { qr_payload } = req.body
 
   try {
@@ -65,8 +66,9 @@ router.post("/decode", async (req, res) => {
 
 /* ===========================================
     🔍 SEARCH TICKET BY NUMBER (MANUAL IMPORT)
+    Added scan.search permission
 =========================================== */
-router.post("/search", async (req, res) => {
+router.post("/search", verifyToken, checkPermission("scan.search"), async (req, res) => {
   const { ticket_number } = req.body
 
   try {
@@ -200,8 +202,9 @@ router.post("/validate", verifyToken, checkPermission("scan.validate"), async (r
 
 /* ===========================================
     📊 STATS — GET SCAN AND VALIDATION STATS
+    Added scan.statistics permission
 =========================================== */
-router.get("/stats", verifyToken, async (req, res) => {
+router.get("/stats", verifyToken, checkPermission("scan.statistics"), async (req, res) => {
   try {
     // Get count of validated participants (entrées validées)
     const validatedEntries = await Participant.count({

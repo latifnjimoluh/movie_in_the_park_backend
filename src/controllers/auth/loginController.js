@@ -17,9 +17,15 @@ module.exports = {
       })
     }
 
-    const token = jwt.sign({ id: user.id, name: user.name, email: user.email, role: user.role }, process.env.JWT_SECRET, {
-      expiresIn: process.env.JWT_EXPIRY || "7d",
-    })
+    await user.update({ last_login: new Date() })
+
+    const token = jwt.sign(
+      { id: user.id, name: user.name, email: user.email, role: user.role },
+      process.env.JWT_SECRET,
+      {
+        expiresIn: process.env.JWT_EXPIRY || "7d",
+      },
+    )
 
     const refreshToken = jwt.sign({ id: user.id }, process.env.JWT_REFRESH_SECRET, {
       expiresIn: process.env.JWT_REFRESH_EXPIRY || "30d",
@@ -43,4 +49,3 @@ module.exports = {
     })
   },
 }
-

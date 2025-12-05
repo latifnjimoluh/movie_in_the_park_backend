@@ -12,6 +12,7 @@ const fetch = global.fetch
 // Models / Services
 const ActionLog = require("./models/ActionLog")
 const actionLogService = require("./services/logService")
+const auditService = require("./services/auditService")
 
 // Routes
 const authRoutes = require("./routes/authRoutes")
@@ -21,51 +22,56 @@ const paymentRoutes = require("./routes/paymentRoutes")
 const ticketRoutes = require("./routes/ticketRoutes")
 const scanRoutes = require("./routes/scanRoutes")
 const userRoutes = require("./routes/userRoutes")
+const auditRoutes = require("./routes/auditRoutes")
 
-// Middleware
-const { errorHandler } = require("./middlewares/errorHandler")
+const errorHandler = require("./middlewares/errorHandler")
+
 
 const app = express()
 
 // ============================================
 // HELMET - Configuration avec CSP personnalisée
 // ============================================
-app.use(helmet({
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
-      scriptSrc: ["'self'"],
-      imgSrc: ["'self'", "data:", "blob:"],
-      connectSrc: ["'self'"],
-      fontSrc: ["'self'"],
-      objectSrc: ["'none'"],
-      mediaSrc: ["'self'"],
-      // ✅ CRITIQUE : Autoriser les iframes depuis localhost
-      frameSrc: ["'self'"],
-      frameAncestors: ["'self'", "http://localhost:3000", "http://localhost:3001"],
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        scriptSrc: ["'self'"],
+        imgSrc: ["'self'", "data:", "blob:"],
+        connectSrc: ["'self'"],
+        fontSrc: ["'self'"],
+        objectSrc: ["'none'"],
+        mediaSrc: ["'self'"],
+        // ✅ CRITIQUE : Autoriser les iframes depuis localhost
+        frameSrc: ["'self'"],
+        frameAncestors: ["'self'", "http://localhost:3002", "http://localhost:3001"],
+      },
     },
-  },
-  crossOriginEmbedderPolicy: false,
-  crossOriginResourcePolicy: { policy: "cross-origin" }
-}))
+    crossOriginEmbedderPolicy: false,
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+  }),
+)
 
 // ============================================
 // CORS - Configuration complète
 // ============================================
-app.use(cors({
-  origin: [
-    'http://localhost:3000',
-    'http://localhost:3001',
-    'http://localhost:3002',
-    process.env.FRONTEND_URL,
-    process.env.FRONTEND_URL2
-  ].filter(Boolean),
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  exposedHeaders: ['Content-Disposition', 'Content-Type', 'Content-Length']
-}))
+app.use(
+  cors({
+    origin: [
+      "http://localhost:3000",
+      "http://localhost:3001",
+      "http://localhost:3002",
+      process.env.FRONTEND_URL,
+      process.env.FRONTEND_URL2,
+    ].filter(Boolean),
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+    exposedHeaders: ["Content-Disposition", "Content-Type", "Content-Length"],
+  }),
+)
 
 // ============================================
 // BODY PARSERS
@@ -89,6 +95,7 @@ app.use("/api/payments", paymentRoutes)
 app.use("/api/tickets", ticketRoutes)
 app.use("/api/scan", scanRoutes)
 app.use("/api/users", userRoutes)
+app.use("/api/audit", auditRoutes)
 
 // ============================================
 // HEALTH CHECK
@@ -96,7 +103,7 @@ app.use("/api/users", userRoutes)
 app.get("/api/health", (req, res) => {
   res.json({
     status: "ok",
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
   })
 })
 
@@ -106,7 +113,7 @@ app.get("/api/health", (req, res) => {
 app.get("/api/keepalive", (req, res) => {
   res.json({
     status: "alive",
-    time: new Date().toISOString()
+    time: new Date().toISOString(),
   })
 })
 

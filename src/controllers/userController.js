@@ -1,6 +1,7 @@
 const bcryptjs = require("bcryptjs")
 const { User } = require("../models")
 const logger = require("../config/logger")
+const auditService = require("../services/auditService")
 
 module.exports = {
   async create(req, res) {
@@ -16,6 +17,25 @@ module.exports = {
         phone,
         role,
         password_hash,
+      })
+
+      logger.info(`User created: ${user.id}`)
+
+      await auditService.log({
+        userId: req.user.id,
+        permission: "users.create",
+        entityType: "user",
+        entityId: user.id,
+        action: "create",
+        description: `Nouvel administrateur créé: ${name} (${role})`,
+        changes: {
+          name,
+          email,
+          phone,
+          role,
+        },
+        ipAddress: req.ip,
+        userAgent: req.get("user-agent"),
       })
 
       res.status(201).json({
@@ -42,34 +62,32 @@ module.exports = {
     }
   },
 
-    async me(req, res) {
-      try {
-        // Supposition : ton middleware verifyToken met userId dans req.userId
-        const userId = req.userId || (req.user && req.user.id)
-        if (!userId) {
-          return res.status(401).json({ status: 401, message: "Utilisateur non authentifié" })
-        }
-
-        const user = await User.findByPk(userId, {
-          attributes: ["id", "name", "email", "phone", "role", "createdAt"],
-        })
-
-        if (!user) {
-          return res.status(404).json({ status: 404, message: "Utilisateur introuvable" })
-        }
-
-        return res.json({ status: 200, data: user })
-      } catch (err) {
-        logger.error("Error fetching current user:", err)
-        return res.status(500).json({ status: 500, message: "Erreur serveur" })
+  async me(req, res) {
+    try {
+      const userId = req.userId || (req.user && req.user.id)
+      if (!userId) {
+        return res.status(401).json({ status: 401, message: "Utilisateur non authentifié" })
       }
-    },
 
+      const user = await User.findByPk(userId, {
+        attributes: ["id", "name", "email", "phone", "role", "last_login", "createdAt"],
+      })
+
+      if (!user) {
+        return res.status(404).json({ status: 404, message: "Utilisateur introuvable" })
+      }
+
+      return res.json({ status: 200, data: user })
+    } catch (err) {
+      logger.error("Error fetching current user:", err)
+      return res.status(500).json({ status: 500, message: "Erreur serveur" })
+    }
+  },
 
   async list(req, res) {
     try {
       const users = await User.findAll({
-        attributes: ["id", "name", "email", "phone", "role", "createdAt"],
+        attributes: ["id", "name", "email", "phone", "role", "last_login", "createdAt"],
       })
 
       res.json({ status: 200, message: "Users retrieved", data: users })
@@ -84,10 +102,9 @@ module.exports = {
   // ============================
   async updatePassword(req, res) {
     try {
-      const userId = req.user.id  // Récupéré depuis verifyToken
+      const userId = req.user.id
       const { oldPassword, newPassword } = req.body
 
-      // Vérifier si les champs sont présents
       if (!oldPassword || !newPassword) {
         return res.status(400).json({
           status: 400,
@@ -95,7 +112,6 @@ module.exports = {
         })
       }
 
-      // Récupérer l’utilisateur
       const user = await User.findByPk(userId)
 
       if (!user) {
@@ -105,7 +121,6 @@ module.exports = {
         })
       }
 
-      // Vérifier l'ancien mot de passe
       const isMatch = bcryptjs.compareSync(oldPassword, user.password_hash)
 
       if (!isMatch) {
@@ -115,12 +130,21 @@ module.exports = {
         })
       }
 
-      // Hash du nouveau mot de passe
       const newHash = bcryptjs.hashSync(newPassword, 10)
 
-      // Mise à jour
       user.password_hash = newHash
       await user.save()
+
+      await auditService.log({
+        userId,
+        permission: "users.edit.password",
+        entityType: "user",
+        entityId: userId,
+        action: "update_password",
+        description: `Mot de passe modifié`,
+        ipAddress: req.ip,
+        userAgent: req.get("user-agent"),
+      })
 
       res.json({
         status: 200,
@@ -151,7 +175,25 @@ module.exports = {
         })
       }
 
+      const userName = user.name
+
       await user.destroy()
+
+      logger.info(`User deleted: ${id}`)
+
+      await auditService.log({
+        userId: req.user.id,
+        permission: "users.delete",
+        entityType: "user",
+        entityId: id,
+        action: "delete",
+        description: `Administrateur supprimé: ${userName}`,
+        changes: {
+          deleted_user: userName,
+        },
+        ipAddress: req.ip,
+        userAgent: req.get("user-agent"),
+      })
 
       res.json({
         status: 200,
@@ -162,6 +204,70 @@ module.exports = {
       res.status(500).json({
         status: 500,
         message: "Failed to delete user",
+      })
+    }
+  },
+
+  // ============================
+  // 🔧 UPDATE USER ROLE (SUPERADMIN ONLY)
+  // ============================
+  async updateRole(req, res) {
+    try {
+      const { id } = req.params
+      const { role } = req.body
+
+      if (!role || !["superadmin", "admin", "cashier", "scanner", "operator"].includes(role)) {
+        return res.status(400).json({
+          status: 400,
+          message: "Invalid role provided",
+        })
+      }
+
+      const user = await User.findByPk(id)
+
+      if (!user) {
+        return res.status(404).json({
+          status: 404,
+          message: "User not found",
+        })
+      }
+
+      const oldRole = user.role
+
+      await user.update({ role })
+
+      logger.info(`User role updated: ${id}`)
+
+      await auditService.log({
+        userId: req.user.id,
+        permission: "users.edit.role",
+        entityType: "user",
+        entityId: id,
+        action: "update_role",
+        description: `Rôle de ${user.name} modifié de ${oldRole} à ${role}`,
+        changes: {
+          old_role: oldRole,
+          new_role: role,
+        },
+        ipAddress: req.ip,
+        userAgent: req.get("user-agent"),
+      })
+
+      res.json({
+        status: 200,
+        message: "User role updated successfully",
+        data: {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+        },
+      })
+    } catch (err) {
+      logger.error("Error updating user role:", err)
+      res.status(500).json({
+        status: 500,
+        message: "Failed to update user role",
       })
     }
   },

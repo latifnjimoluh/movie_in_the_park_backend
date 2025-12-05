@@ -5,9 +5,9 @@ const { checkPermission } = require("../middlewares/permissions")
 
 const router = express.Router()
 
-router.get("/", packController.getAll)
+router.get("/", verifyToken, checkPermission("packs.view"), packController.getAll)
 
-router.get("/:id", async (req, res) => {
+router.get("/:id", verifyToken, checkPermission("packs.view"), async (req, res) => {
   const { Pack } = require("../models")
   const pack = await Pack.findByPk(req.params.id)
 
@@ -25,10 +25,10 @@ router.get("/:id", async (req, res) => {
   })
 })
 
-router.post("/", verifyToken, checkPermission("packs.manage"), packController.create)
+router.post("/", verifyToken, checkPermission("packs.create"), packController.create)
 
-router.put("/:id", verifyToken, checkPermission("packs.manage"), packController.update)
+router.put("/:id", verifyToken, checkPermission("packs.edit"), packController.update)
 
-router.delete("/:id", verifyToken, checkPermission("packs.manage"), packController.delete)
+router.delete("/:id", verifyToken, checkPermission("packs.delete"), packController.delete)
 
 module.exports = router

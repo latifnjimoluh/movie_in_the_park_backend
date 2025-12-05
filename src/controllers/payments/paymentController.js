@@ -1,5 +1,5 @@
 const { sequelize } = require("../models")
-const { Reservation, Payment, ActionLog } = require("../models")
+const { Reservation, Payment, ActionLog, ActivityLog } = require("../models")
 const logger = require("../config/logger")
 const descriptions = require("../utils/actionDescriptions")
 const path = require("path")
@@ -8,7 +8,7 @@ const fs = require("fs").promises
 // -------------------------------------------------------------
 // 🔵 ADD PAYMENT
 // -------------------------------------------------------------
-const addPayment = async (reservationId, paymentData, userId, proofFile = null) => {
+const addPayment = async (reservationId, paymentData, userId, proofFile = null, ipAddress = null, userAgent = null) => {
   const transaction = await sequelize.transaction()
 
   try {
@@ -26,7 +26,7 @@ const addPayment = async (reservationId, paymentData, userId, proofFile = null) 
     }
 
     const remainingAmount = reservation.total_price - reservation.total_paid
-    
+
     // ✅ Vérification si le montant dépasse le montant restant
     if (paymentData.amount > remainingAmount) {
       throw {
@@ -39,7 +39,7 @@ const addPayment = async (reservationId, paymentData, userId, proofFile = null) 
     let proofPath = null
     if (proofFile) {
       const uploadsDir = path.join(__dirname, "..", "uploads", "payment-proofs")
-      
+
       // Créer le dossier s'il n'existe pas
       try {
         await fs.access(uploadsDir)
@@ -76,10 +76,7 @@ const addPayment = async (reservationId, paymentData, userId, proofFile = null) 
       newStatus = "paid"
     }
 
-    await reservation.update(
-      { total_paid: newTotalPaid, status: newStatus },
-      { transaction },
-    )
+    await reservation.update({ total_paid: newTotalPaid, status: newStatus }, { transaction })
 
     // ✅ Mapping des méthodes de paiement en français
     const methodLabels = {
@@ -106,6 +103,37 @@ const addPayment = async (reservationId, paymentData, userId, proofFile = null) 
       { transaction },
     )
 
+    // -------------------------------------------------------------
+    // 🟣 ACTIVITY LOG (Audit détaillé)
+    // -------------------------------------------------------------
+    await ActivityLog.create(
+      {
+        user_id: userId,
+        permission: "payments.create",
+        entity_type: "payment",
+        entity_id: payment.id,
+        action: "create",
+        description: `Paiement de ${paymentData.amount} XAF enregistré pour la réservation ${reservation.reservation_number} via ${methodLabels[paymentData.method] || paymentData.method}`,
+        changes: {
+          payment_id: payment.id,
+          reservation_id: reservationId,
+          reservation_number: reservation.reservation_number,
+          amount: paymentData.amount,
+          method: paymentData.method,
+          comment: paymentData.comment,
+          has_proof: !!proofPath,
+          previous_total_paid: reservation.total_paid,
+          new_total_paid: newTotalPaid,
+          previous_status: reservation.status,
+          new_status: newStatus,
+        },
+        status: "success",
+        ip_address: ipAddress,
+        user_agent: userAgent,
+      },
+      { transaction },
+    )
+
     await transaction.commit()
 
     return {
@@ -127,7 +155,7 @@ const addPayment = async (reservationId, paymentData, userId, proofFile = null) 
 // -------------------------------------------------------------
 // 🔴 DELETE PAYMENT
 // -------------------------------------------------------------
-const deletePayment = async (paymentId, reservationId, userId) => {
+const deletePayment = async (paymentId, reservationId, userId, ipAddress = null, userAgent = null) => {
   const transaction = await sequelize.transaction()
 
   try {
@@ -169,12 +197,12 @@ const deletePayment = async (paymentId, reservationId, userId) => {
       newStatus = "paid"
     }
 
-    await payment.destroy({ transaction })
-
-    await reservation.update(
-      { total_paid: newTotalPaid, status: newStatus },
-      { transaction },
-    )
+    // Mapping des méthodes de paiement en français
+    const methodLabels = {
+      cash: "espèces",
+      momo: "Mobile Money",
+      orange: "Orange Money",
+    }
 
     // -------------------------------------------------------------
     // 🟡 ACTION LOG (lisible par un non technicien)
@@ -192,6 +220,40 @@ const deletePayment = async (paymentId, reservationId, userId) => {
       },
       { transaction },
     )
+
+    // -------------------------------------------------------------
+    // 🟣 ACTIVITY LOG (Audit détaillé)
+    // -------------------------------------------------------------
+    await ActivityLog.create(
+      {
+        user_id: userId,
+        permission: "payments.delete",
+        entity_type: "payment",
+        entity_id: paymentId,
+        action: "delete",
+        description: `Paiement de ${payment.amount} XAF annulé pour la réservation ${reservation.reservation_number} (${methodLabels[payment.method] || payment.method})`,
+        changes: {
+          payment_id: paymentId,
+          reservation_id: reservationId,
+          reservation_number: reservation.reservation_number,
+          amount: payment.amount,
+          method: payment.method,
+          comment: payment.comment,
+          had_proof: !!payment.proof_url,
+          previous_total_paid: reservation.total_paid,
+          new_total_paid: newTotalPaid,
+          previous_status: reservation.status,
+          new_status: newStatus,
+        },
+        status: "success",
+        ip_address: ipAddress,
+        user_agent: userAgent,
+      },
+      { transaction },
+    )
+
+    await payment.destroy({ transaction })
+    await reservation.update({ total_paid: newTotalPaid, status: newStatus }, { transaction })
 
     await transaction.commit()
 

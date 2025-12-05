@@ -31,6 +31,10 @@ module.exports = (sequelize) => {
         type: DataTypes.ENUM("superadmin", "admin", "cashier", "scanner"),
         defaultValue: "cashier",
       },
+      last_login: {
+        type: DataTypes.DATE,
+        allowNull: true,
+      },
       createdAt: {
         type: DataTypes.DATE,
         defaultValue: DataTypes.NOW,
@@ -50,6 +54,7 @@ module.exports = (sequelize) => {
     User.hasMany(models.Payment, { foreignKey: "created_by", as: "payments" })
     User.hasMany(models.Ticket, { foreignKey: "generated_by", as: "tickets" })
     User.hasMany(models.ActionLog, { foreignKey: "user_id", as: "actions" })
+    User.hasMany(models.ActivityLog, { foreignKey: "user_id", as: "activities" })
   }
 
   return User

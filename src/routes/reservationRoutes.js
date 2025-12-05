@@ -58,115 +58,121 @@ router.get("/", verifyToken, checkPermission("reservations.view"), async (req, r
 /* ============================================================
    📌 CREATE RESERVATION — emails envoyés APRÈS la réponse
 ============================================================ */
-router.post("/", validate(createReservationSchema), async (req, res) => {
-  const t = await sequelize.transaction()
+router.post(
+  "/",
+  verifyToken,
+  checkPermission("reservations.create"),
+  validate(createReservationSchema),
+  async (req, res) => {
+    const t = await sequelize.transaction()
 
-  try {
-    const { payeur_name, payeur_phone, payeur_email, pack_id, quantity, participants } = req.validatedData
+    try {
+      const { payeur_name, payeur_phone, payeur_email, pack_id, quantity, participants } = req.validatedData
 
-    const pack = await Pack.findByPk(pack_id, { transaction: t })
+      const pack = await Pack.findByPk(pack_id, { transaction: t })
 
-    if (!pack) {
-      await t.rollback()
-      return res.status(404).json({ status: 404, message: "Pack not found" })
-    }
-
-    if (!pack.is_active) {
-      await t.rollback()
-      return res.status(400).json({
-        status: 400,
-        message: "Pack is no longer available",
-      })
-    }
-
-    const total_price = pack.price
-
-    // ---------- CREATE RESERVATION ----------
-    const reservation = await Reservation.create(
-      {
-        payeur_name,
-        payeur_phone,
-        payeur_email: payeur_email || null,
-        pack_id,
-        pack_name_snapshot: pack.name,
-        unit_price: pack.price,
-        quantity,
-        total_price,
-        status: "pending",
-      },
-      { transaction: t },
-    )
-
-    // ---------- CREATE PARTICIPANTS ----------
-    if (participants && participants.length > 0) {
-      for (const p of participants) {
-        await Participant.create(
-          {
-            reservation_id: reservation.id,
-            name: p.name,
-            email: p.email || null,
-            phone: p.phone || null,
-          },
-          { transaction: t },
-        )
+      if (!pack) {
+        await t.rollback()
+        return res.status(404).json({ status: 404, message: "Pack not found" })
       }
-    }
 
-    // Reload full object with participants
-    const fullReservation = await Reservation.findByPk(reservation.id, {
-      include: [{ association: "participants" }],
-      transaction: t,
-    })
+      if (!pack.is_active) {
+        await t.rollback()
+        return res.status(400).json({
+          status: 400,
+          message: "Pack is no longer available",
+        })
+      }
 
-    await t.commit()
+      const total_price = pack.price
 
-    logger.info(`Reservation created: ${reservation.id}`)
+      // ---------- CREATE RESERVATION ----------
+      const reservation = await Reservation.create(
+        {
+          payeur_name,
+          payeur_phone,
+          payeur_email: payeur_email || null,
+          pack_id,
+          pack_name_snapshot: pack.name,
+          unit_price: pack.price,
+          quantity,
+          total_price,
+          status: "pending",
+        },
+        { transaction: t },
+      )
 
-    /* ============================================================
+      // ---------- CREATE PARTICIPANTS ----------
+      if (participants && participants.length > 0) {
+        for (const p of participants) {
+          await Participant.create(
+            {
+              reservation_id: reservation.id,
+              name: p.name,
+              email: p.email || null,
+              phone: p.phone || null,
+            },
+            { transaction: t },
+          )
+        }
+      }
+
+      // Reload full object with participants
+      const fullReservation = await Reservation.findByPk(reservation.id, {
+        include: [{ association: "participants" }],
+        transaction: t,
+      })
+
+      await t.commit()
+
+      logger.info(`Reservation created: ${reservation.id}`)
+
+      /* ============================================================
        📩 SEND EMAILS (ASYNC — DOES NOT BLOCK RESPONSE)
     ============================================================ */
 
-    setImmediate(async () => {
-      try {
-        // ➤ SEND EMAIL TO PAYER (if email exists)
-        if (payeur_email && typeof payeur_email === "string" && payeur_email.trim() !== "") {
-          await sendPayerEmail(fullReservation, participants || [], pack)
-        }
-
-        // ➤ SEND EMAIL TO PARTICIPANTS WITH EMAIL
-        if (participants && participants.length > 0) {
-          const participantsWithEmail = participants.filter(
-            (p) => p.email && typeof p.email === "string" && p.email.trim() !== "",
-          )
-
-          for (const participant of participantsWithEmail) {
-            await sendParticipantEmail(participant, fullReservation, pack)
+      setImmediate(async () => {
+        try {
+          // ➤ SEND EMAIL TO PAYER (if email exists)
+          if (payeur_email && typeof payeur_email === "string" && payeur_email.trim() !== "") {
+            await sendPayerEmail(fullReservation, participants || [], pack)
           }
-        }
-      } catch (emailErr) {
-        logger.warn("Async email sending failed:", emailErr.message)
-      }
-    })
 
-    /* ============================================================
+          // ➤ SEND EMAIL TO PARTICIPANTS WITH EMAIL
+          if (participants && participants.length > 0) {
+            const participantsWithEmail = participants.filter(
+              (p) => p.email && typeof p.email === "string" && p.email.trim() !== "",
+            )
+
+            for (const participant of participantsWithEmail) {
+              await sendParticipantEmail(participant, fullReservation, pack)
+            }
+          }
+        } catch (emailErr) {
+          logger.warn("Async email sending failed:", emailErr.message)
+        }
+      })
+
+      /* ============================================================
        📌 IMMEDIATE RESPONSE TO FRONTEND (NO WAITING FOR EMAILS)
     ============================================================ */
 
-    return res.status(201).json({
-      status: 201,
-      message: "Reservation created",
-      data: { reservation: fullReservation },
-    })
-  } catch (error) {
-    await t.rollback()
-    logger.error(`Error creating reservation: ${error.message}`)
+      return res.status(201).json({
+        status: 201,
+        message: "Reservation created",
+        data: { reservation: fullReservation },
+      })
+    } catch (error) {
+      await t.rollback()
+      logger.error(`Error creating reservation: ${error.message}`)
 
-    return res.status(500).json({
-      status: 500,
-      message: "Error creating reservation",
-    })
-  }
-})
+      return res.status(500).json({
+        status: 500,
+        message: "Error creating reservation",
+      })
+    }
+  },
+)
 
 /* ============================================================
    📌 GET ONE RESERVATION
@@ -201,7 +207,7 @@ router.get("/:id", verifyToken, checkPermission("reservations.view"), async (req
 router.post(
   "/:id/payments",
   verifyToken,
-  checkPermission("payments.add"),
+  checkPermission("payments.create"),
   uploadPaymentProof.single("proof"),
   async (req, res) => {
     const { amount, method, comment } = req.body
@@ -223,5 +229,95 @@ router.post(
     }
   },
 )
+
+/* ============================================================
+   📌 DELETE RESERVATION (soft delete)
+============================================================ */
+router.delete("/:id", verifyToken, checkPermission("reservations.delete.soft"), async (req, res) => {
+  const { id } = req.params
+
+  try {
+    const reservation = await Reservation.findByPk(id)
+
+    if (!reservation) {
+      return res.status(404).json({
+        status: 404,
+        message: "Reservation not found",
+      })
+    }
+
+    if (reservation.status === "ticket_generated") {
+      return res.status(409).json({
+        status: 409,
+        message: "Cannot delete reservation after ticket generation",
+      })
+    }
+
+    await reservation.update({ status: "cancelled" })
+
+    logger.info(`Reservation deleted/cancelled: ${id}`)
+
+    res.json({
+      status: 200,
+      message: "Reservation successfully cancelled",
+      data: { reservation },
+    })
+  } catch (error) {
+    logger.error(`Error deleting reservation: ${error.message}`)
+    res.status(500).json({
+      status: 500,
+      message: "Error deleting reservation",
+    })
+  }
+})
+
+/* ============================================================
+   📌 DELETE RESERVATION PERMANENTLY (SUPERADMIN ONLY)
+============================================================ */
+router.delete("/:id/permanent", verifyToken, checkPermission("reservations.delete.permanent"), async (req, res) => {
+  const { id } = req.params
+  const t = await sequelize.transaction()
+
+  try {
+    const reservation = await Reservation.findByPk(id, { transaction: t })
+
+    if (!reservation) {
+      await t.rollback()
+      return res.status(404).json({
+        status: 404,
+        message: "Reservation not found",
+      })
+    }
+
+    if (reservation.status === "ticket_generated") {
+      await t.rollback()
+      return res.status(409).json({
+        status: 409,
+        message: "Cannot permanently delete reservation after ticket generation",
+      })
+    }
+
+    await Payment.destroy({ where: { reservation_id: id }, transaction: t })
+    await Participant.destroy({ where: { reservation_id: id }, transaction: t })
+
+    await Reservation.destroy({ where: { id }, transaction: t })
+
+    await t.commit()
+
+    logger.info(`Reservation permanently deleted: ${id}`)
+
+    res.json({
+      status: 200,
+      message: "Reservation permanently deleted",
+    })
+  } catch (error) {
+    await t.rollback()
+    logger.error(`Error permanently deleting reservation: ${error.message}`)
+    res.status(500).json({
+      status: 500,
+      message: "Error permanently deleting reservation",
+    })
+  }
+})
 
 module.exports = router

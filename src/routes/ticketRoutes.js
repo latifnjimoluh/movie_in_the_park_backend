@@ -10,7 +10,6 @@ const jwt = require("jsonwebtoken")
 
 const router = express.Router()
 
-
 // ============================================
 // UTILITAIRES
 // ============================================
@@ -25,7 +24,7 @@ const buildUrl = (req, relativePath) => {
 const allowedOrigins = [
   process.env.FRONTEND_URL || "http://localhost:3002",
   "http://localhost:3002",
-  "http://localhost:3001"
+  "http://localhost:3001",
 ]
 
 const setCorsHeaders = (res, origin) => {
@@ -62,13 +61,7 @@ router.get("/", verifyToken, checkPermission("tickets.view"), async (req, res) =
     // ✅ MODIFICATION ICI - Inclure toutes les infos de la réservation
     const includeReservation = {
       association: "reservation",
-      attributes: [
-        "id", 
-        "payeur_name", 
-        "payeur_phone", 
-        "payeur_email",  // ✅ Ajouté
-        "pack_name_snapshot"
-      ],
+      attributes: ["id", "payeur_name", "payeur_phone", "payeur_email", "pack_name_snapshot"],
     }
     if (packId) {
       includeReservation.where = { pack_id: packId }
@@ -108,13 +101,15 @@ router.get("/", verifyToken, checkPermission("tickets.view"), async (req, res) =
           generated_at: ticket.generated_at,
           created_at: ticket.createdAt,
           // ✅ MODIFICATION ICI - Inclure l'objet reservation complet
-          reservation: ticket.reservation ? {
-            id: ticket.reservation.id,
-            payeur_name: ticket.reservation.payeur_name,
-            payeur_phone: ticket.reservation.payeur_phone,
-            payeur_email: ticket.reservation.payeur_email,
-            pack_name_snapshot: ticket.reservation.pack_name_snapshot,
-          } : null
+          reservation: ticket.reservation
+            ? {
+                id: ticket.reservation.id,
+                payeur_name: ticket.reservation.payeur_name,
+                payeur_phone: ticket.reservation.payeur_phone,
+                payeur_email: ticket.reservation.payeur_email,
+                pack_name_snapshot: ticket.reservation.pack_name_snapshot,
+              }
+            : null,
         }
       }),
     )
@@ -147,46 +142,46 @@ router.options("/:id/preview-token", (req, res) => {
   res.sendStatus(204)
 })
 
-router.post("/:id/preview-token", verifyToken, checkPermission("tickets.view"), async (req, res) => {
+router.post("/:id/preview-token", verifyToken, checkPermission("tickets.preview"), async (req, res) => {
   try {
     const { id } = req.params
-    
+
     console.log("[Preview Token] Generating token for ticket:", id)
-    
+
     // Vérifier que le ticket existe
     const ticket = await Ticket.findByPk(id)
-    
+
     if (!ticket) {
       return res.status(404).json({
         status: 404,
         message: "Ticket not found",
       })
     }
-    
+
     // Générer un token temporaire valable 5 minutes
     const previewToken = jwt.sign(
-      { 
-        ticketId: id, 
-        userId: req.user.id, 
-        type: 'preview' 
+      {
+        ticketId: id,
+        userId: req.user.id,
+        type: "preview",
       },
       process.env.JWT_SECRET,
-      { expiresIn: '5m' }
+      { expiresIn: "5m" },
     )
-    
+
     console.log("[Preview Token] Token generated successfully")
-    
+
     res.json({
       status: 200,
       message: "Preview token generated",
-      data: { previewToken }
+      data: { previewToken },
     })
   } catch (err) {
     console.error("[Preview Token] Error:", err)
     logger.error("Error generating preview token:", err)
-    res.status(500).json({ 
-      status: 500, 
-      message: "Failed to generate preview token" 
+    res.status(500).json({
+      status: 500,
+      message: "Failed to generate preview token",
     })
   }
 })
@@ -205,7 +200,7 @@ router.get("/:id/preview", async (req, res) => {
   try {
     const { id } = req.params
     const { token } = req.query
-    
+
     console.log("[Preview] Preview endpoint called - ticket id:", id)
 
     // CORS Headers
@@ -213,8 +208,8 @@ router.get("/:id/preview", async (req, res) => {
     setCorsHeaders(res, origin)
 
     // ✅ Vérifier le token (depuis query string OU header)
-    let authToken = token || req.headers.authorization?.replace("Bearer ", "")
-    
+    const authToken = token || req.headers.authorization?.replace("Bearer ", "")
+
     if (!authToken) {
       console.log("[Preview] No token provided")
       return res.status(401).json({
@@ -226,16 +221,16 @@ router.get("/:id/preview", async (req, res) => {
     // ✅ Valider le token
     try {
       const decoded = jwt.verify(authToken, process.env.JWT_SECRET)
-      
+
       // Si c'est un token de preview, vérifier qu'il correspond au ticket
-      if (decoded.type === 'preview' && decoded.ticketId !== id) {
+      if (decoded.type === "preview" && decoded.ticketId !== id) {
         console.log("[Preview] Token ticket ID mismatch")
         return res.status(403).json({
           status: 403,
           message: "Token invalide pour ce ticket",
         })
       }
-      
+
       console.log("[Preview] Token valid for user:", decoded.userId || decoded.id)
     } catch (err) {
       console.error("[Preview] Token validation failed:", err.message)
@@ -246,7 +241,7 @@ router.get("/:id/preview", async (req, res) => {
     }
 
     const ticket = await Ticket.findByPk(id)
-    
+
     if (!ticket || !ticket.pdf_url) {
       return res.status(404).json({
         status: 404,
@@ -255,7 +250,7 @@ router.get("/:id/preview", async (req, res) => {
     }
 
     const pdfPath = path.join(process.cwd(), ticket.pdf_url.replace("/uploads/", "uploads/"))
-    
+
     if (!fs.existsSync(pdfPath)) {
       return res.status(404).json({
         status: 404,
@@ -286,10 +281,10 @@ router.get("/:id/preview", async (req, res) => {
   } catch (err) {
     console.error("[Preview] Error:", err)
     logger.error("Error loading PDF preview:", err)
-    
+
     const origin = req.headers.origin
     setCorsHeaders(res, origin)
-    
+
     res.status(500).json({
       status: 500,
       message: "Failed to load PDF preview",
@@ -307,7 +302,7 @@ router.options("/:id/download", (req, res) => {
   res.sendStatus(204)
 })
 
-router.get("/:id/download", verifyToken, checkPermission("tickets.view"), async (req, res) => {
+router.get("/:id/download", verifyToken, checkPermission("tickets.download"), async (req, res) => {
   try {
     const { id } = req.params
     console.log("[Download] Download endpoint called - ticket id:", id)
@@ -381,10 +376,10 @@ router.get("/:id/download", verifyToken, checkPermission("tickets.view"), async 
   } catch (err) {
     console.error("[Download] Try/catch error:", err)
     logger.error("Error downloading ticket PDF:", err)
-    
+
     const origin = req.headers.origin
     setCorsHeaders(res, origin)
-    
+
     res.status(500).json({
       status: 500,
       message: "Failed to download ticket",
@@ -392,11 +387,7 @@ router.get("/:id/download", verifyToken, checkPermission("tickets.view"), async 
   }
 })
 
-// ============================================
-// ENDPOINTS - Téléchargement QR image
-// ============================================
-
-router.get("/:id/download-image", verifyToken, checkPermission("tickets.view"), async (req, res) => {
+router.get("/:id/download-image", verifyToken, checkPermission("tickets.download"), async (req, res) => {
   try {
     const { id } = req.params
 

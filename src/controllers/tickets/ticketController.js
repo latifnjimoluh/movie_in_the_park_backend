@@ -1,6 +1,7 @@
 const { Reservation, Ticket, Participant } = require("../../models")
 const { createTicket } = require("../../services/ticketService")
 const logger = require("../../config/logger")
+const auditService = require("../../services/auditService")
 
 module.exports = {
   // ---------------- GENERATE TICKET (secure) ----------------
@@ -33,6 +34,21 @@ module.exports = {
       const result = await createTicket(reservation_id, req.user.id)
 
       logger.info(`Ticket generated: ${result.ticket.id}`)
+
+      await auditService.log({
+        userId: req.user.id,
+        permission: "tickets.generate",
+        entityType: "ticket",
+        entityId: result.ticket.id,
+        action: "generate",
+        description: `Ticket généré pour la réservation ${reservation_id}`,
+        changes: {
+          reservation_id,
+          ticket_id: result.ticket.id,
+        },
+        ipAddress: req.ip,
+        userAgent: req.get("user-agent"),
+      })
 
       res.status(201).json({
         status: 201,

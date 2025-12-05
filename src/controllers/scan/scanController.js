@@ -2,6 +2,7 @@ const jwt = require("jsonwebtoken")
 const { Ticket, Participant, Reservation } = require("../../models")
 const { ActionLog } = require("../../models")
 const logger = require("../../config/logger")
+const auditService = require("../../services/auditService")
 
 module.exports = {
   async validateAndScan(req, res) {
@@ -53,6 +54,23 @@ module.exports = {
       })
 
       logger.info(`Ticket scanned: ${ticket.id}`)
+
+      await auditService.log({
+        userId: req.user.id,
+        permission: "scan.validate",
+        entityType: "ticket",
+        entityId: ticket.id,
+        action: "validate",
+        description: `Ticket validé à l'entrée`,
+        changes: {
+          ticket_number: ticket.ticket_number,
+          reservation_id: ticket.reservation_id,
+          previous_status: "valid",
+          new_status: "used",
+        },
+        ipAddress: req.ip,
+        userAgent: req.get("user-agent"),
+      })
 
       res.json({
         status: 200,
