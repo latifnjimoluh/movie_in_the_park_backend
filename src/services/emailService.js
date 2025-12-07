@@ -23,8 +23,11 @@ if (EMAIL_PROVIDER === "gmail") {
     tls: {
       rejectUnauthorized: false,
     },
+    pool: true, // ✅ Utiliser le pooling de connexions
+    maxConnections: 5, // ✅ Max 5 connexions simultanées
+    maxMessages: 100, // ✅ Max 100 messages par connexion
   })
-  logger.info("Email provider: Gmail SMTP")
+  logger.info("Email provider: Gmail SMTP with connection pooling")
 } else if (EMAIL_PROVIDER === "sendgrid") {
   sgMail.setApiKey(process.env.SENDGRID_API_KEY)
   logger.info("Email provider: SendGrid API")
@@ -41,6 +44,9 @@ if (EMAIL_PROVIDER === "gmail") {
     tls: {
       rejectUnauthorized: false,
     },
+    pool: true,
+    maxConnections: 5,
+    maxMessages: 100,
   })
 }
 
@@ -611,7 +617,7 @@ const sendTicketWithPDFEmail = async (reservation, ticketData, participants, pdf
     })
   }
 
-    // 2. Ajouter les participants avec emails (sauf le payeur)
+  // 2. Ajouter les participants avec emails (sauf le payeur)
   if (participants && Array.isArray(participants)) {
     participants.forEach((p) => {
       if (p.email && p.email !== reservation.payeur_email) {
@@ -635,7 +641,6 @@ const sendTicketWithPDFEmail = async (reservation, ticketData, participants, pdf
   // Récupérer le PDF du ticket si pas fourni
   let ticketPdfPath = ticketData?.pdf_url || ticketData?.path || null
   if (ticketPdfPath && ticketPdfPath.startsWith("/")) {
-    // ton projet a un dossier 'backend' à la racine; ajuste si nécessaire
     ticketPdfPath = path.join(process.cwd(), "backend", ticketPdfPath)
   }
 
@@ -722,7 +727,6 @@ const sendTicketEmailToRecipient = async (recipient, reservation, ticketData, pd
       </div>
     `
 
-  // HTML complet de l'email (tu peux remplacer par ton template complet si tu veux)
   const htmlContent = `
     <!DOCTYPE html>
     <html lang="fr">
@@ -786,7 +790,6 @@ const sendTicketEmailToRecipient = async (recipient, reservation, ticketData, pd
       html: htmlContent,
     }
 
-    // joindre le PDF si disponible
     if (pdfBuffer) {
       mailOptions.attachments = [
         {
@@ -804,9 +807,153 @@ const sendTicketEmailToRecipient = async (recipient, reservation, ticketData, pd
   }
 }
 
-/* ---------------------------------------------
-   Export des fonctions
-----------------------------------------------*/
+/* ===== ADMIN NOTIFICATION EMAIL ===== */
+const sendAdminNotificationEmail = async (reservation, participants, pack, adminEmails) => {
+  const emailsArray = Array.isArray(adminEmails) ? adminEmails : adminEmails ? [adminEmails] : []
+  const validEmails = emailsArray.filter((email) => email && typeof email === "string" && email.trim() !== "")
+
+  if (validEmails.length === 0) {
+    logger.warn("No admin emails configured for notifications")
+    return
+  }
+
+  const participantsList = participants
+    .map((p) => `• ${p.name}${p.phone ? ` (Tél: ${p.phone})` : ""}${p.email ? ` (${p.email})` : ""}`)
+    .join("\n")
+
+  // ✅ Nettoyer le numéro de téléphone (enlever les espaces, +, etc.)
+  const cleanPhone = reservation.payeur_phone.replace(/[^0-9]/g, "")
+  
+  // ✅ Créer le message WhatsApp personnalisé
+  const whatsappMessage = `Bonjour ${reservation.payeur_name}, Je suis de l'équipe Movie In The Park. Je vous écris concernant votre réservation pour ${pack.name} : ${reservation.total_price.toLocaleString()} XAF
+
+La suite est simple :
+Vous devez faire votre dépôt au numéro suivant : 697304450 ou 670782799 (le nom c'est : FRANCES BROOKLYN MATANGA ENDALE)
+
+Par la suite m'envoyer une capture d'écran lisible.
+
+Après ça votre ticket vous sera envoyé par E-mail ou ici comme vous le désireriez.
+
+Passez une bonne journée 🙂`
+  
+  // ✅ Le href va automatiquement encoder le message UNE SEULE FOIS
+  const whatsappLink = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(whatsappMessage)}`
+
+  const htmlContent = `
+    <!DOCTYPE html>
+    <html lang="fr">
+    <head>
+      <meta charset="UTF-8">
+      <style>
+        body { font-family: Arial, sans-serif; color: #333; }
+        .container { max-width: 700px; margin: 0 auto; background: #f0f0f0; padding: 20px; border-radius: 8px; }
+        .header { background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%); color: white; padding: 20px; border-radius: 8px 8px 0 0; text-align: center; }
+        .content { background: white; padding: 20px; border-radius: 0 0 8px 8px; }
+        .section { margin: 20px 0; border-bottom: 1px solid #eee; padding-bottom: 15px; }
+        .section:last-child { border-bottom: none; }
+        .label { font-weight: bold; color: #e74c3c; font-size: 14px; }
+        .highlight { background: #fff3cd; padding: 15px; border-left: 4px solid #e74c3c; margin: 15px 0; border-radius: 5px; }
+        .price-box { background: #ffe5e5; padding: 15px; border-left: 4px solid #e74c3c; margin: 15px 0; border-radius: 5px; font-size: 16px; }
+        .contact-box { background: #e8f5e9; padding: 15px; border-left: 4px solid #27ae60; margin: 15px 0; border-radius: 5px; }
+        .whatsapp-btn { display: inline-block; background: #25d366; color: white; padding: 10px 15px; border-radius: 5px; text-decoration: none; font-weight: bold; margin: 10px 0; }
+        .footer { text-align: center; font-size: 12px; color: #999; margin-top: 20px; padding-top: 15px; border-top: 1px solid #eee; }
+        .info { font-size: 13px; line-height: 1.6; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h2>📢 Nouvelle Réservation</h2>
+          <p style="margin: 0; font-size: 14px;">Movie In The Park - Notification Admin</p>
+        </div>
+
+        <div class="content">
+          <p style="color: #e74c3c; font-weight: bold;">⚠️ Une nouvelle réservation est en attente de paiement</p>
+          
+          <div class="section">
+            <div class="label">👤 INFORMATIONS DU PAYEUR</div>
+            <div class="info">
+              <p><strong>Nom :</strong> ${reservation.payeur_name}</p>
+              <p><strong>Téléphone :</strong> ${reservation.payeur_phone}</p>
+              <p><strong>Email :</strong> ${reservation.payeur_email || "N/A"}</p>
+            </div>
+          </div>
+
+          <div class="section">
+            <div class="label">🎬 DÉTAILS DE LA RÉSERVATION</div>
+            <div class="info">
+              <p><strong>Pack :</strong> ${pack.name}</p>
+              <p><strong>Description :</strong> ${pack.description || "N/A"}</p>
+              <p><strong>Nombre de participants :</strong> ${participants.length}</p>
+              <p><strong>Quantité :</strong> ${reservation.quantity}</p>
+            </div>
+          </div>
+
+          <div class="section">
+            <div class="label">👥 LISTE DES PARTICIPANTS</div>
+            <pre style="background: #f5f5f5; padding: 10px; border-radius: 5px; font-size: 12px; max-height: 200px; overflow-y: auto;">${participantsList}</pre>
+          </div>
+
+          <div class="price-box">
+            <p style="margin: 0;"><strong>💰 Montant à percevoir :</strong></p>
+            <p style="font-size: 24px; margin: 10px 0 0 0;"><strong>${reservation.total_price.toLocaleString()} XAF</strong></p>
+            <p style="margin: 5px 0 0 0; font-size: 12px; color: #c0392b;">Statut : <strong>${reservation.status}</strong></p>
+          </div>
+
+          <div class="contact-box">
+            <p style="margin-top: 0;"><strong>🔗 ACTIONS RAPIDES :</strong></p>
+            <p>
+              <a href="${whatsappLink}" class="whatsapp-btn">💬 Contacter via WhatsApp</a>
+            </p>
+            <p style="font-size: 12px; color: #666;">Ou appelez : <strong>${reservation.payeur_phone}</strong></p>
+          </div>
+
+          <div class="highlight">
+            <p><strong>📊 Récapitulatif :</strong></p>
+            <ul style="margin: 10px 0; padding-left: 20px;">
+              <li>Réservé depuis : ${new Date(reservation.createdAt).toLocaleString("fr-FR")}</li>
+              <li>Montant restant : <strong>${(reservation.total_price - reservation.total_paid).toLocaleString()} XAF</strong></li>
+              <li>Payeur Email : ${reservation.payeur_email || "Pas d'email fourni"}</li>
+              <li>Nombre total participants : ${participants.length}</li>
+            </ul>
+          </div>
+
+          <p style="text-align: center; margin: 20px 0;">
+            <strong style="color: #e74c3c;">N'oubliez pas de relancer le client pour le paiement !</strong>
+          </p>
+
+          <div class="footer">
+            <p>Email automatique - Notification système Movie In The Park</p>
+            <p>Timestamp: ${new Date().toISOString()}</p>
+          </div>
+        </div>
+      </div>
+    </body>
+    </html>
+  `
+
+  // ✅ ENVOYER LES EMAILS UN PAR UN AVEC DÉLAI pour éviter "socket close"
+  for (let i = 0; i < validEmails.length; i++) {
+    const adminEmail = validEmails[i]
+    try {
+      await sendEmail({
+        from: process.env.SMTP_FROM || process.env.EMAIL_FROM,
+        to: adminEmail,
+        subject: `[NOUVELLE RÉSERVATION] ${reservation.payeur_name} - ${pack.name} (${reservation.total_price.toLocaleString()} XAF)`,
+        html: htmlContent,
+      })
+      logger.info(`Admin notification email sent to ${adminEmail}`)
+      
+      // ✅ ATTENDRE 2 SECONDES entre chaque email pour éviter les problèmes de socket
+      if (i < validEmails.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 2000))
+      }
+    } catch (error) {
+      logger.error(`Error sending admin notification email to ${adminEmail}: ${error.message}`)
+    }
+  }
+}
+
 module.exports = {
   sendPayerEmail,
   sendParticipantEmail,
@@ -814,6 +961,6 @@ module.exports = {
   sendTicketReadyEmail,
   sendTicketWithPDFEmail,
   sendTicketEmailToRecipient,
-  // expose le transporteur si d'autres modules l'attendent
+  sendAdminNotificationEmail,
   transporter,
 }

@@ -6,13 +6,14 @@ const helmet = require("helmet")
 const path = require("path")
 const cron = require("node-cron")
 
-// 👇 Utiliser le fetch natif de Node
+// 👇 Fetch natif de Node
 const fetch = global.fetch
 
-// Models / Services
+// Services / Models
 const ActionLog = require("./models/ActionLog")
 const actionLogService = require("./services/logService")
 const auditService = require("./services/auditService")
+const contactService = require("./services/contactService")
 
 // Routes
 const authRoutes = require("./routes/authRoutes")
@@ -23,14 +24,15 @@ const ticketRoutes = require("./routes/ticketRoutes")
 const scanRoutes = require("./routes/scanRoutes")
 const userRoutes = require("./routes/userRoutes")
 const auditRoutes = require("./routes/auditRoutes")
+const contactRoutes = require("./routes/contactRoutes")
+const trackingRoutes = require("./routes/trackingRoutes")
 
 const errorHandler = require("./middlewares/errorHandler")
-
 
 const app = express()
 
 // ============================================
-// HELMET - Configuration avec CSP personnalisée
+// HELMET - CSP sécurisée
 // ============================================
 app.use(
   helmet({
@@ -44,18 +46,21 @@ app.use(
         fontSrc: ["'self'"],
         objectSrc: ["'none'"],
         mediaSrc: ["'self'"],
-        // ✅ CRITIQUE : Autoriser les iframes depuis localhost
         frameSrc: ["'self'"],
-        frameAncestors: ["'self'", "http://localhost:3002", "http://localhost:3001"],
+        frameAncestors: [
+          "'self'",
+          "http://localhost:3002",
+          "http://localhost:3001"
+        ],
       },
     },
     crossOriginEmbedderPolicy: false,
     crossOriginResourcePolicy: { policy: "cross-origin" },
-  }),
+  })
 )
 
 // ============================================
-// CORS - Configuration complète
+// CORS - Autorisations complètes
 // ============================================
 app.use(
   cors({
@@ -69,18 +74,22 @@ app.use(
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allowedHeaders: ["Content-Type", "Authorization"],
-    exposedHeaders: ["Content-Disposition", "Content-Type", "Content-Length"],
-  }),
+    exposedHeaders: [
+      "Content-Disposition",
+      "Content-Type",
+      "Content-Length",
+    ],
+  })
 )
 
 // ============================================
-// BODY PARSERS
+// BODY PARSER
 // ============================================
 app.use(express.json({ limit: "10mb" }))
 app.use(express.urlencoded({ limit: "10mb", extended: true }))
 
 // ============================================
-// STATIC FILES - Uploads
+// STATIC FILES
 // ============================================
 const uploadPath = path.join(process.cwd(), "uploads")
 app.use("/uploads", express.static(uploadPath))
@@ -96,6 +105,8 @@ app.use("/api/tickets", ticketRoutes)
 app.use("/api/scan", scanRoutes)
 app.use("/api/users", userRoutes)
 app.use("/api/audit", auditRoutes)
+app.use("/api/contact", contactRoutes)
+app.use("/api/track", trackingRoutes)
 
 // ============================================
 // HEALTH CHECK
@@ -123,20 +134,27 @@ app.get("/api/keepalive", (req, res) => {
 cron.schedule("*/5 * * * *", async () => {
   console.log("⏱️ CRON KEEPALIVE lancé :", new Date().toISOString())
 
-  const frontendUrl = process.env.FRONTEND_LOGIN_URL
-  const backendUrl = process.env.BACKEND_KEEPALIVE_URL
+  const frontend1 = process.env.FRONTEND_LOGIN_URL
+  const frontend2 = process.env.FRONTEND_URL2
+  const backend = process.env.BACKEND_KEEPALIVE_URL
 
   try {
-    // Ping frontend
-    if (frontendUrl) {
-      const res1 = await fetch(frontendUrl)
-      console.log("🌐 Ping frontend login:", res1.status)
+    // 🔵 Ping FRONTEND 1
+    if (frontend1) {
+      const res1 = await fetch(frontend1)
+      console.log("🌐 Ping frontend 1:", res1.status)
     }
 
-    // Ping backend
-    if (backendUrl) {
-      const res2 = await fetch(backendUrl)
-      console.log("🟢 Ping backend keepalive:", res2.status)
+    // 🔵 Ping FRONTEND 2
+    if (frontend2) {
+      const res2 = await fetch(frontend2)
+      console.log("🌐 Ping frontend 2:", res2.status)
+    }
+
+    // 🟢 Ping BACKEND
+    if (backend) {
+      const res3 = await fetch(backend)
+      console.log("🟢 Ping backend keepalive:", res3.status)
     }
   } catch (err) {
     console.error("❌ Erreur CRON keepalive :", err.message)
@@ -151,7 +169,7 @@ app.use((req, res) => {
 })
 
 // ============================================
-// ERROR HANDLER
+// GLOBAL ERROR HANDLER
 // ============================================
 app.use(errorHandler)
 
