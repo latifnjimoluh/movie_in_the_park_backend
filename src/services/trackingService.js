@@ -17,6 +17,11 @@ const getClientIp = (req) => {
   )
 }
 
+const getTodayDate = () => {
+  const today = new Date()
+  return today.toISOString().split("T")[0]
+}
+
 const trackVisit = async (req) => {
   try {
     const clientIp = getClientIp(req)
@@ -28,6 +33,21 @@ const trackVisit = async (req) => {
       visitRecord = await db.Visit.create({ total_visits: 1 })
     } else {
       await visitRecord.increment("total_visits", { by: 1 })
+    }
+
+    const todayDate = getTodayDate()
+    let dailyVisit = await db.DailyVisits.findOne({
+      where: { visit_date: todayDate },
+    })
+
+    if (!dailyVisit) {
+      dailyVisit = await db.DailyVisits.create({
+        visit_date: todayDate,
+        total_visits: 1,
+        unique_visitors: 0,
+      })
+    } else {
+      await dailyVisit.increment("total_visits", { by: 1 })
     }
 
     // 2. Check if visitor already exists
@@ -50,6 +70,8 @@ const trackVisit = async (req) => {
         first_visit: new Date(),
         last_visit: new Date(),
       })
+
+      await dailyVisit.increment("unique_visitors", { by: 1 })
 
       return {
         success: true,

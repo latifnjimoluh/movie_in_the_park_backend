@@ -1,9 +1,11 @@
 const express = require("express")
 const { trackVisit } = require("../services/trackingService")
+const trackingController = require("../controllers/tracking/trackingController")
+const { verifyToken } = require("../middlewares/auth")
 
 const router = express.Router()
 
-// POST /api/track - Track a visitor
+// POST /api/track - Track a visitor (no auth required)
 router.post("/", async (req, res) => {
   try {
     const result = await trackVisit(req)
@@ -19,5 +21,9 @@ router.post("/", async (req, res) => {
     })
   }
 })
+
+router.get("/stats", verifyToken, trackingController.getStats)
+
+router.get("/evolution", verifyToken, trackingController.getDailyEvolution)
 
 module.exports = router
