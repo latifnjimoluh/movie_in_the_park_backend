@@ -240,7 +240,7 @@ router.post("/public", validate(createReservationSchema), preventDuplicateReques
    📌 GET ALL RESERVATIONS
 ============================================================ */
 router.get("/", verifyToken, checkPermission("reservations.view"), async (req, res) => {
-  const { q, status, page = 1, pageSize = 20 } = req.query
+  const { q, status, page = 1, pageSize = 1000 } = req.query
 
   let where = {}
 

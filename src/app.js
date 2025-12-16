@@ -131,35 +131,35 @@ app.get("/api/keepalive", (req, res) => {
 // ============================================
 // CRON KEEPALIVE — toutes les 5 minutes
 // ============================================
-cron.schedule("*/5 * * * *", async () => {
-  console.log("⏱️ CRON KEEPALIVE lancé :", new Date().toISOString())
+// cron.schedule("*/5 * * * *", async () => {
+//   console.log("⏱️ CRON KEEPALIVE lancé :", new Date().toISOString())
 
-  const frontend1 = process.env.FRONTEND_LOGIN_URL
-  const frontend2 = process.env.FRONTEND_URL2
-  const backend = process.env.BACKEND_KEEPALIVE_URL
+//   const frontend1 = process.env.FRONTEND_LOGIN_URL
+//   const frontend2 = process.env.FRONTEND_URL2
+//   const backend = process.env.BACKEND_KEEPALIVE_URL
 
-  try {
-    // 🔵 Ping FRONTEND 1
-    if (frontend1) {
-      const res1 = await fetch(frontend1)
-      console.log("🌐 Ping frontend 1:", res1.status)
-    }
+//   try {
+//     // 🔵 Ping FRONTEND 1
+//     if (frontend1) {
+//       const res1 = await fetch(frontend1)
+//       console.log("🌐 Ping frontend 1:", res1.status)
+//     }
 
-    // 🔵 Ping FRONTEND 2
-    if (frontend2) {
-      const res2 = await fetch(frontend2)
-      console.log("🌐 Ping frontend 2:", res2.status)
-    }
+//     // 🔵 Ping FRONTEND 2
+//     if (frontend2) {
+//       const res2 = await fetch(frontend2)
+//       console.log("🌐 Ping frontend 2:", res2.status)
+//     }
 
-    // 🟢 Ping BACKEND
-    if (backend) {
-      const res3 = await fetch(backend)
-      console.log("🟢 Ping backend keepalive:", res3.status)
-    }
-  } catch (err) {
-    console.error("❌ Erreur CRON keepalive :", err.message)
-  }
-})
+//     // 🟢 Ping BACKEND
+//     if (backend) {
+//       const res3 = await fetch(backend)
+//       console.log("🟢 Ping backend keepalive:", res3.status)
+//     }
+//   } catch (err) {
+//     console.error("❌ Erreur CRON keepalive :", err.message)
+//   }
+// })
 
 // ============================================
 // 404 HANDLER
